@@ -43,6 +43,9 @@ router.get('/autocomplete', async (req, res) => {
         // Execute search
         const suggestions = await queries.getTopSuggestions(q, resultLimit);
 
+        console.log('Autocomplete query:', q);
+        console.log('Autocomplete results:', JSON.stringify(suggestions));
+
         res.json({
             success: true,
             query: q,
