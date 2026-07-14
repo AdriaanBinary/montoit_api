@@ -66,7 +66,7 @@ app.listen(PORT, () => {
     console.log(`🔍 Autocomplete: http://localhost:${PORT}/api/autocomplete?q=test`);
 });
 
-// Graceful shutdown
+// Graceful shutdown service
 process.on('SIGINT', () => {
     console.log('\n📍 Shutting down gracefully...');
     process.exit(0);
