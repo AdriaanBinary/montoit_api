@@ -1,0 +1,19 @@
+{
+  "name": "montoit_api",
+  "version": "1.0.0",
+  "description": "API for Montoit project",
+  "main": "src/index.js",
+  "author": "Adriaan",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "pg": "^8.11.3",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {}
+}
