@@ -21,8 +21,8 @@ app.get('/health', (req, res) => {
 
 // Routes
 app.use('/api', autocompleteRoutes);
-app.use('/api/auth/register', registerRoutes);
-app.use('/api/auth/login', loginRoutes);
+app.use('/api/auth/', registerRoutes);
+app.use('/api/auth/', loginRoutes);
 
 // Database connection test endpoint
 app.get('/api/db-test', async (req, res) => {
