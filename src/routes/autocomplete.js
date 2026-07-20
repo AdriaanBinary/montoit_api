@@ -37,10 +37,8 @@ router.get('/autocomplete', async (req, res) => {
             });
         }
 
-        // Parse and validate limit
         const resultLimit = limit ? Math.min(parseInt(limit, 10) || 8, 50) : 8;
 
-        // Execute search
         const suggestions = await queries.getTopSuggestions(q, resultLimit);
 
         console.log('Autocomplete query:', q);

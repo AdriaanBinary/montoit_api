@@ -1,6 +1,8 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import autocompleteRoutes from './routes/autocomplete.js';
+import registerRoutes from './routes/auth/register.js';
+import loginRoutes from './routes/auth/login.js';
 import MontoitDB from './db/pool.js';
 
 dotenv.config();
@@ -19,6 +21,8 @@ app.get('/health', (req, res) => {
 
 // Routes
 app.use('/api', autocompleteRoutes);
+app.use('/api/auth/register', registerRoutes);
+app.use('/api/auth/login', loginRoutes);
 
 // Database connection test endpoint
 app.get('/api/db-test', async (req, res) => {
@@ -63,7 +67,6 @@ app.listen(PORT, () => {
     console.log(`🚀 Montoit API running on http://localhost:${PORT}`);
     console.log(`📝 Environment: ${process.env.NODE_ENV || 'DEV'}`);
     console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-    console.log(`🔍 Autocomplete: http://localhost:${PORT}/api/autocomplete?q=test`);
 });
 
 // Graceful shutdown service
