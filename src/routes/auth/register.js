@@ -28,7 +28,7 @@ router.post('/register', (req, res) => {
         message: 'Sign-up successful',
         token,
         user: {
-          user_id: user.user_id,
+          user_id: user.id,
           username: user.username,
           email: user.email,
           created_at: user.created_at

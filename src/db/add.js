@@ -13,7 +13,7 @@ function generateUserId() {
 
 async function generateUniqueUserId() {
     const userId = generateUserId();
-    const existing = await MontoitDB.query('SELECT 1 FROM users WHERE user_id = $1 LIMIT 1', [userId]);
+    const existing = await MontoitDB.query('SELECT 1 FROM users WHERE id = $1 LIMIT 1', [userId]);
     if (existing.rows.length > 0) {
         return generateUniqueUserId();
     }
@@ -41,9 +41,9 @@ const addData = {
             const date = new Date();
 
             const insertSql = `
-                INSERT INTO users (user_id, username, email, password, created_at, updated_at)
+                INSERT INTO users (id, username, email, password, created_at, updated_at)
                 VALUES ($1, $2, $3, $4, $5, $5)
-                RETURNING user_id, username, email, created_at
+                RETURNING id, username, email, created_at
             `;
 
             const result = await MontoitDB.query(insertSql, [userId, username, email, hashedPassword, date]);
