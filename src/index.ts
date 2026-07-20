@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
+import jwt from 'jsonwebtoken';
 import autocompleteRoutes from './routes/autocomplete.js';
 import registerRoutes from './routes/auth/register.js';
 import loginRoutes from './routes/auth/login.js';
@@ -17,9 +18,48 @@ app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'OK', message: 'Montoit API is running' });
 });
 
-app.use('/api', autocompleteRoutes);
+//auth
 app.use('/api/auth/', registerRoutes);
 app.use('/api/auth/', loginRoutes);
+
+const authCheck = (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+      message: 'Missing or invalid authorization header'
+    });
+  }
+
+  const token = authHeader.split(' ')[1];
+  const secret = process.env.JWT_KEY;
+
+  if (!secret) {
+    return res.status(500).json({
+      success: false,
+      error: 'Server error',
+      message: 'JWT secret is not configured'
+    });
+  }
+
+  try {
+    jwt.verify(token, secret);
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+      message: error instanceof Error ? error.message : 'Invalid token'
+    });
+  }
+};
+
+app.use(authCheck);
+
+// Routes
+app.use('/api', autocompleteRoutes);
 
 app.get('/api/db-test', async (_req: Request, res: Response) => {
   try {
