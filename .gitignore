@@ -23,6 +23,7 @@ Thumbs.db
 # Build
 dist/
 build/
+tsconfig.tsbuildinfo
 
 # Logs
 logs/

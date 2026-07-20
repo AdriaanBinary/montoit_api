@@ -2,20 +2,30 @@
   "name": "montoit_api",
   "version": "1.0.0",
   "description": "API for Montoit project",
-  "main": "src/index.js",
+  "main": "dist/index.js",
   "author": "Adriaan",
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "pg": "^8.11.3",
-    "dotenv": "^16.3.1",
     "bcrypt": "^5.1.1",
-    "jsonwebtoken": "^9.0.0"
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.0",
+    "pg": "^8.11.3"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.2",
+    "@types/node": "^20.14.3",
+    "@types/pg": "^8.20.0",
+    "ts-node-dev": "^2.0.0",
+    "tsx": "^4.23.1",
+    "typescript": "^5.6.0"
+  }
 }

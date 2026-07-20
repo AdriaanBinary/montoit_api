@@ -1,20 +1,20 @@
 # Montoit API
 
-Express.js API for Montoit project with PostgreSQL/Supabase integration.
+TypeScript Express API for the Montoit project with PostgreSQL/Supabase integration.
 
 **Author:** Adriaan
 
 ## Setup
 
-### 1. Install Dependencies
+### 1. Install dependencies
 
 ```bash
 npm install
 ```
 
-### 2. Configure Environment Variables
+### 2. Configure environment variables
 
-Copy `.env.example` to `.env` and fill in your database credentials:
+Copy `.env.example` to `.env` and fill in your database credentials.
 
 ```bash
 cp .env.example .env
@@ -29,35 +29,40 @@ cp .env.example .env
 - Set `NODE_ENV=DEV`
 - Fill in individual credentials: `DB_USER`, `DB_HOST`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT`
 
-### 3. Run the Server
+### 3. Run the server
 
-**Development mode (with auto-reload):**
+**Development mode (auto-reload):**
 ```bash
 npm run dev
 ```
 
-**Production mode:**
+**Build for production:**
+```bash
+npm run build
+```
+
+**Run production build:**
 ```bash
 npm start
 ```
 
-The API will be available at `http://localhost:3000`
+The API will be available at `http://localhost:3000`.
 
 ## API Endpoints
 
-### Health Check
+### Health check
 ```
 GET /health
 ```
 Returns server status.
 
-### Database Connection Test
+### Database connection test
 ```
 GET /api/db-test
 ```
 Tests the database connection.
 
-### Autocomplete Search
+### Autocomplete search
 ```
 GET /api/autocomplete?q=<search_query>&limit=<limit>
 ```
@@ -94,32 +99,42 @@ GET /api/autocomplete?q=Yaounde&limit=10
 montoit_api/
 ├── src/
 │   ├── db/
-│   │   ├── pool.js          # Database connection pool
-│   │   └── queries.js       # Database query functions
+│   │   ├── add.ts
+│   │   ├── get.ts
+│   │   ├── pool.ts
+│   │   ├── queries.ts
+│   │   └── update.ts
 │   ├── routes/
-│   │   └── autocomplete.js  # Autocomplete endpoint
-│   └── index.js             # Main Express app
-├── .env.example             # Environment variables template
-├── .gitignore               # Git ignore rules
-├── package.json             # Project dependencies
-└── README.md                # This file
+│   │   ├── autocomplete.ts
+│   │   └── auth/
+│   │       ├── login.ts
+│   │       └── register.ts
+│   ├── utils/
+│   │   └── passwordUtils.ts
+│   └── index.ts
+├── .env.example
+├── .gitignore
+├── package.json
+├── tsconfig.json
+└── README.md
 ```
 
 ## Environment Variables
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `NODE_ENV` | Environment (PROD or DEV) | `DEV` |
+| `NODE_ENV` | Environment mode | `DEV` or `PROD` |
 | `DATABASE_URL` | Supabase connection string (PROD only) | `postgresql://...` |
 | `DB_USER` | Database username (DEV only) | `postgres` |
-| `DB_HOST` | Database host (DEV only) | `aws-0-eu-west-1.pooler.supabase.com` |
+| `DB_HOST` | Database host (DEV only) | `localhost` |
 | `DB_PASSWORD` | Database password (DEV only) | `your_password` |
 | `DB_NAME` | Database name (DEV only) | `postgres` |
-| `DB_PORT` | Database port (DEV only) | `6543` |
+| `DB_PORT` | Database port (DEV only) | `5432` |
 | `PORT` | Server port | `3000` |
 
 ## Notes
 
-- SSL is enabled by default for Supabase connections
-- The API uses parameterized queries to prevent SQL injection
-- All timestamps are in UTC
+- The project now uses TypeScript for safer typing and better maintainability.
+- `npm run dev` starts the app with hot reload through `ts-node-dev`.
+- `npm run build` compiles source files into `dist/`.
+- The app uses parameterized queries to reduce SQL injection risk.

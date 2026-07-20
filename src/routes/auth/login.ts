@@ -28,13 +28,14 @@ router.post('/login', async (req: Request<{}, {}, LoginRequestBody>, res: Respon
     }
 
     if (user) {
-      const tokenPayload = { user_id: user.user_id, email: user.email };
+      const tokenPayload = { user_id: user.id, email: user.email };
       const token = jwt.sign(tokenPayload, secret, { expiresIn: '7d' });
+
       return res.status(200).json({
         message: 'Login successful',
         token,
         user: {
-          user_id: user.user_id,
+          user_id: user.id,
           username: user.username,
           email: user.email
         }

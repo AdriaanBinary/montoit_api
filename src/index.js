@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
 import autocompleteRoutes from './routes/autocomplete.js';
 import registerRoutes from './routes/auth/register.js';
@@ -8,14 +8,14 @@ import MontoitDB from './db/pool.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'OK', message: 'Montoit API is running' });
 });
 
@@ -25,7 +25,7 @@ app.use('/api/auth/', registerRoutes);
 app.use('/api/auth/', loginRoutes);
 
 // Database connection test endpoint
-app.get('/api/db-test', async (req, res) => {
+app.get('/api/db-test', async (_req: Request, res: Response) => {
     try {
         const result = await MontoitDB.query('SELECT NOW()');
         res.json({
@@ -33,32 +33,32 @@ app.get('/api/db-test', async (req, res) => {
             message: 'Database connection successful',
             timestamp: result.rows[0].now
         });
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Database test error:', error);
         res.status(500).json({
             success: false,
             error: 'Database connection failed',
-            message: error.message
+            message: error instanceof Error ? error.message : 'Unknown error'
         });
     }
 });
 
 // 404 handler
-app.use((req, res) => {
+app.use((_req: Request, res: Response) => {
     res.status(404).json({
         success: false,
         error: 'Not Found',
-        path: req.path
+        path: _req.path
     });
 });
 
 // Error handler
-app.use((err, req, res, next) => {
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error('Error:', err);
     res.status(500).json({
         success: false,
         error: 'Internal Server Error',
-        message: err.message
+        message: err instanceof Error ? err.message : 'Unknown error'
     });
 });
 
