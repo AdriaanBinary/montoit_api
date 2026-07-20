@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import autocompleteRoutes from './routes/autocomplete.js';
 import registerRoutes from './routes/auth/register.js';
 import loginRoutes from './routes/auth/login.js';
+import listingsRoutes from './routes/listings.js';
 import MontoitDB from './db/pool.js';
 
 dotenv.config();
@@ -45,7 +46,8 @@ const authCheck = (req: Request, res: Response, next: NextFunction) => {
   }
 
   try {
-    jwt.verify(token, secret);
+    const decoded = jwt.verify(token, secret) as { user_id?: string; email?: string };
+    (req as Request & { user?: { user_id?: string; email?: string } }).user = decoded;
     next();
   } catch (error) {
     return res.status(401).json({
@@ -60,6 +62,7 @@ app.use(authCheck);
 
 // Routes
 app.use('/api', autocompleteRoutes);
+app.use('/api', listingsRoutes);
 
 app.get('/api/db-test', async (_req: Request, res: Response) => {
   try {
