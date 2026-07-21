@@ -1,13 +1,11 @@
+import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
-import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 import autocompleteRoutes from './routes/autocomplete.js';
 import registerRoutes from './routes/auth/register.js';
 import loginRoutes from './routes/auth/login.js';
 import listingsRoutes from './routes/listings.js';
 import MontoitDB from './db/pool.js';
-
-dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;

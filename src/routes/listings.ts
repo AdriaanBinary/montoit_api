@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import MontoitDB from '../db/pool.js';
 
@@ -51,13 +51,19 @@ const s3Client = new S3Client({
   credentials: process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
     ? {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        ...(process.env.AWS_SESSION_TOKEN ? { sessionToken: process.env.AWS_SESSION_TOKEN } : {})
       }
     : undefined
 });
 
+export function buildListingImageObjectKey(listingId: number, index: number, fileName: string): string {
+  const cleanedFileName = fileName.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-');
+  return `listings/${listingId}/${Date.now()}-${index + 1}-${cleanedFileName}`;
+}
+
 async function buildPresignedGetUrl(bucket: string, key: string): Promise<string> {
-  const command = new PutObjectCommand({
+  const command = new GetObjectCommand({
     Bucket: bucket,
     Key: key
   });
@@ -220,19 +226,17 @@ router.post('/listings/:id/images', async (req: AuthenticatedRequest, res: Respo
       return res.status(404).json({ success: false, error: 'Listing not found' });
     }
 
-    const collectionResult = await MontoitDB.query(
-      `INSERT INTO image_collections (entity_type, entity_id, name, created_at, updated_at)
-       VALUES ('listing', $1, $2, NOW(), NOW())
-       RETURNING id`,
-      [String(listingId), body.name ?? 'Listing images']
-    );
-
-    const collectionId = collectionResult.rows[0].id;
-
-    await MontoitDB.query(
-      'UPDATE listings SET image_collection_id = $1, updated_at = NOW() WHERE id = $2',
-      [collectionId, listingId]
-    );
+    await MontoitDB.query(`
+      CREATE TABLE IF NOT EXISTS listing_images (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+        object_key TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        width INTEGER,
+        height INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
 
     const images = Array.isArray(body.images) ? body.images : [];
     const insertedImages = [] as Array<Record<string, unknown>>;
@@ -247,19 +251,20 @@ router.post('/listings/:id/images', async (req: AuthenticatedRequest, res: Respo
 
     for (const [index, image] of images.entries()) {
       const filename = image.fileName ?? image.name ?? `image-${index + 1}`;
-      const objectKey = `listings/${listingId}/${Date.now()}-${index + 1}-${filename}`;
+      const objectKey = buildListingImageObjectKey(listingId, index, filename);
       const contentType = image.contentType ?? 'application/octet-stream';
       const uploadUrl = await buildPresignedPutUrl(bucketName, objectKey, contentType);
 
       const imageResult = await MontoitDB.query(
-        `INSERT INTO collection_images (collection_id, bucket, object_key, sort_order, created_at)
-         VALUES ($1, $2, $3, $4, NOW())
-         RETURNING id, collection_id, bucket, object_key, sort_order, created_at`,
-        [collectionId, bucketName, objectKey, index]
+        `INSERT INTO listing_images (listing_id, object_key, sort_order, created_at)
+         VALUES ($1, $2, $3, NOW())
+         RETURNING id, listing_id, object_key, sort_order, created_at`,
+        [listingId, objectKey, index]
       );
 
       insertedImages.push({
         id: imageResult.rows[0].id,
+        listing_id: listingId,
         bucket: bucketName,
         object_key: objectKey,
         file_name: filename,
@@ -271,7 +276,7 @@ router.post('/listings/:id/images', async (req: AuthenticatedRequest, res: Respo
 
     return res.status(201).json({
       success: true,
-      collection_id: collectionId,
+      collection_id: null,
       listing_id: listingId,
       images: insertedImages
     });
@@ -309,22 +314,21 @@ router.get('/listings/:id', async (req: AuthenticatedRequest, res: Response) => 
     }
 
     const listing = result.rows[0];
-    const collectionResult = await MontoitDB.query(
-      `SELECT ci.bucket, ci.object_key
-       FROM collection_images ci
-       JOIN image_collections ic ON ic.id = ci.collection_id
-       WHERE ic.id = $1
-       ORDER BY ci.sort_order ASC, ci.created_at ASC`,
-      [listing.image_collection_id]
+    const imageResult = await MontoitDB.query(
+      `SELECT object_key
+       FROM listing_images
+       WHERE listing_id = $1
+       ORDER BY sort_order ASC, created_at ASC`,
+      [listingId]
     );
 
     const images = [] as Array<Record<string, unknown>>;
     const bucketName = process.env.AWS_S3_BUCKET ?? 'property-images';
 
-    for (const row of collectionResult.rows) {
+    for (const row of imageResult.rows) {
       const viewUrl = await buildPresignedGetUrl(bucketName, row.object_key);
       images.push({
-        bucket: row.bucket,
+        bucket: bucketName,
         object_key: row.object_key,
         url: viewUrl
       });

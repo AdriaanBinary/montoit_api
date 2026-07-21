@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeCreateListingInput } from './listings.js';
+import { buildListingImageObjectKey, normalizeCreateListingInput } from './listings.js';
 
 test('defaults new listings to draft and unpublished when not provided', () => {
   const payload = normalizeCreateListingInput({ title: 'Cozy apartment' }, 'u_test');
@@ -34,4 +34,11 @@ test('preserves explicit values when creating a listing', () => {
   assert.equal(payload.bedrooms, 3);
   assert.equal(payload.bathrooms, 2.5);
   assert.deepEqual(payload.features, ['pool', 'garden']);
+});
+
+test('builds a deterministic listing image object key', () => {
+  const key = buildListingImageObjectKey(42, 1, 'Front View.jpg');
+
+  assert.match(key, /^listings\/42\//);
+  assert.match(key, /-2-Front-View\.jpg$/);
 });
