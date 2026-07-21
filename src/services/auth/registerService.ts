@@ -1,9 +1,6 @@
-import express, { Request, Response } from 'express';
+import { Request, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
 import addData from '../../db/add.js';
-
-dotenv.config();
 
 interface RegisterRequestBody {
   username?: string;
@@ -11,10 +8,9 @@ interface RegisterRequestBody {
   password?: string;
 }
 
-const router = express.Router();
-
-router.post('/register', async (req: Request<{}, {}, RegisterRequestBody>, res: Response) => {
-  const { username, email, password } = req.body;
+export const register: RequestHandler = async (req, res) => {
+  const typedReq = req as Request<{}, {}, RegisterRequestBody>;
+  const { username, email, password } = typedReq.body;
 
   if (!username || !email || !password) {
     return res.status(400).json({ error: 'username, email, and password are required' });
@@ -48,6 +44,4 @@ router.post('/register', async (req: Request<{}, {}, RegisterRequestBody>, res: 
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
-});
-
-export default router;
+};

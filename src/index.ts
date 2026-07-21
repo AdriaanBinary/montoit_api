@@ -1,11 +1,9 @@
 import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 import autocompleteRoutes from './routes/autocomplete.js';
 import registerRoutes from './routes/auth/register.js';
 import loginRoutes from './routes/auth/login.js';
 import listingsRoutes from './routes/listings.js';
-import publicListingsRoutes from './routes/publicListings.js';
 import MontoitDB from './db/pool.js';
 
 const app = express();
@@ -21,44 +19,6 @@ app.get('/health', (_req: Request, res: Response) => {
 //auth
 app.use('/api/auth/', registerRoutes);
 app.use('/api/auth/', loginRoutes);
-app.use('/api', publicListingsRoutes);
-
-const authCheck = (req: Request, res: Response, next: NextFunction) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({
-      success: false,
-      error: 'Unauthorized',
-      message: 'Missing or invalid authorization header'
-    });
-  }
-
-  const token = authHeader.split(' ')[1];
-  const secret = process.env.JWT_KEY;
-
-  if (!secret) {
-    return res.status(500).json({
-      success: false,
-      error: 'Server error',
-      message: 'JWT secret is not configured'
-    });
-  }
-
-  try {
-    const decoded = jwt.verify(token, secret) as { user_id?: string; email?: string };
-    (req as Request & { user?: { user_id?: string; email?: string } }).user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({
-      success: false,
-      error: 'Unauthorized',
-      message: error instanceof Error ? error.message : 'Invalid token'
-    });
-  }
-};
-
-app.use(authCheck);
 
 // Routes
 app.use('/api', autocompleteRoutes);

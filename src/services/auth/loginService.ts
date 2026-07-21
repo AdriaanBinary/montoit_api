@@ -1,19 +1,15 @@
-import express, { Request, Response } from 'express';
+import { Request, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
 import getData from '../../db/get.js';
-
-dotenv.config();
 
 interface LoginRequestBody {
   email?: string;
   password?: string;
 }
 
-const router = express.Router();
-
-router.post('/login', async (req: Request<{}, {}, LoginRequestBody>, res: Response) => {
-  const { email, password } = req.body;
+export const login: RequestHandler = async (req, res) => {
+  const typedReq = req as Request<{}, {}, LoginRequestBody>;
+  const { email, password } = typedReq.body;
 
   if (!email || !password) {
     return res.status(400).json({ error: 'email and password are required' });
@@ -28,13 +24,14 @@ router.post('/login', async (req: Request<{}, {}, LoginRequestBody>, res: Respon
     }
 
     if (user) {
-      const tokenPayload = { user_id: user.user_id, email: user.email };
+      const tokenPayload = { user_id: user.id, email: user.email };
       const token = jwt.sign(tokenPayload, secret, { expiresIn: '7d' });
+
       return res.status(200).json({
         message: 'Login successful',
         token,
         user: {
-          user_id: user.user_id,
+          user_id: user.id,
           username: user.username,
           email: user.email
         }
@@ -49,6 +46,4 @@ router.post('/login', async (req: Request<{}, {}, LoginRequestBody>, res: Respon
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
-});
-
-export default router;
+};

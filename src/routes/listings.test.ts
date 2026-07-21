@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildListingImageObjectKey, normalizeCreateListingInput } from './listings.js';
+import { buildListingImageObjectKey, normalizeCreateListingInput } from '../services/listingsService.js';
 
 test('defaults new listings to draft and unpublished when not provided', () => {
   const payload = normalizeCreateListingInput({ title: 'Cozy apartment' }, 'u_test');
