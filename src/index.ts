@@ -5,6 +5,7 @@ import autocompleteRoutes from './routes/autocomplete.js';
 import registerRoutes from './routes/auth/register.js';
 import loginRoutes from './routes/auth/login.js';
 import listingsRoutes from './routes/listings.js';
+import publicListingsRoutes from './routes/publicListings.js';
 import MontoitDB from './db/pool.js';
 
 const app = express();
@@ -20,6 +21,7 @@ app.get('/health', (_req: Request, res: Response) => {
 //auth
 app.use('/api/auth/', registerRoutes);
 app.use('/api/auth/', loginRoutes);
+app.use('/api', publicListingsRoutes);
 
 const authCheck = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;

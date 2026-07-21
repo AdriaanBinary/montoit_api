@@ -39,7 +39,6 @@ interface ListingImageInput {
 }
 
 interface ListingImageUploadRequestBody {
-  bucket?: string;
   images?: ListingImageInput[];
   name?: string;
 }

@@ -71,6 +71,27 @@ GET /api/autocomplete?q=<search_query>&limit=<limit>
 - `q` (required): Search query (minimum 2 characters)
 - `limit` (optional): Maximum results, default 8, max 50
 
+### Public active listings
+```
+GET /api/listings/active
+```
+Returns all listings where status is `active`. This endpoint does not require authentication.
+
+**Query parameters:**
+- `page` (optional): Page number, default `1`
+- `limit` (optional): Items per page, default `20`, max `100`
+
+**Response pagination format:**
+```json
+{
+  "pagination": {
+    "currentpage": 1,
+    "pages": 7,
+    "itemsPerPage": 20
+  }
+}
+```
+
 **Example:**
 ```
 GET /api/autocomplete?q=Buea
