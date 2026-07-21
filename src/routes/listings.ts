@@ -46,8 +46,21 @@ interface ListingImageUploadRequestBody {
 
 const router = express.Router();
 
+// const s3Client = new S3Client({
+//   region: process.env.AWS_REGION ?? 'us-east-1',
+//   credentials: process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
+//     ? {
+//         accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+//         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+//         ...(process.env.AWS_SESSION_TOKEN ? { sessionToken: process.env.AWS_SESSION_TOKEN } : {})
+//       }
+//     : undefined
+// });
+
 const s3Client = new S3Client({
-  region: process.env.AWS_REGION ?? 'us-east-1',
+  forcePathStyle: true,
+  region: process.env.AWS_REGION,
+  endpoint: process.env.AWS_S3_ENDPOINT,
   credentials: process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
     ? {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -55,7 +68,7 @@ const s3Client = new S3Client({
         ...(process.env.AWS_SESSION_TOKEN ? { sessionToken: process.env.AWS_SESSION_TOKEN } : {})
       }
     : undefined
-});
+})
 
 export function buildListingImageObjectKey(listingId: number, index: number, fileName: string): string {
   const cleanedFileName = fileName.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-');
