@@ -253,7 +253,7 @@ router.post('/listings/:id/images', async (req: AuthenticatedRequest, res: Respo
 
     const images = Array.isArray(body.images) ? body.images : [];
     const insertedImages = [] as Array<Record<string, unknown>>;
-    const bucketName = body.bucket ?? process.env.AWS_S3_BUCKET ?? 'property-images';
+    const bucketName = process.env.AWS_S3_BUCKET ?? 'no-bucket-specified';
 
     if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
       return res.status(500).json({
