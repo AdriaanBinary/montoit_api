@@ -277,7 +277,42 @@ const listingsDb = {
       skip: offset
     });
 
-    return toRecords(listings);
+    const listingIds = listings
+      .map((listing: { id: unknown }) => listing.id)
+      .filter((id: unknown): id is number => Number.isInteger(id));
+
+    if (listingIds.length === 0) {
+      return toRecords(listings).map((listing) => ({ ...listing, images: [] }));
+    }
+
+    const listingImages = await prisma.listingImage.findMany({
+      where: {
+        listing_id: { in: listingIds },
+        upload_confirmed: true
+      },
+      orderBy: [{ listing_id: 'asc' }, { sort_order: 'asc' }, { created_at: 'asc' }]
+    });
+
+    const imagesByListing = new Map<number, Record<string, unknown>[]>();
+
+    for (const image of listingImages) {
+      const images = imagesByListing.get(image.listing_id) ?? [];
+
+      if (images.length < 5) {
+        images.push(toRecord(image));
+        imagesByListing.set(image.listing_id, images);
+      }
+    }
+
+    return toRecords(listings).map((listing) => {
+      const listingId = typeof listing.id === 'number' ? listing.id : Number(listing.id);
+      const images = Number.isInteger(listingId) ? (imagesByListing.get(listingId) ?? []) : [];
+
+      return {
+        ...listing,
+        images
+      };
+    });
   }
 };
 
