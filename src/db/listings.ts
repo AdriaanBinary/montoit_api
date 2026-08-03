@@ -256,28 +256,23 @@ const listingsDb = {
     return toRecords(listings);
   },
 
-  countPublicListings: async function(): Promise<number> {
+  countPublicListings: async function(where: Record<string, unknown>): Promise<number> {
     const total = await prisma.listing.count({
-      where: {
-        status: 'active',
-        is_published: true,
-        deleted_at: null
-      }
+      where
     });
 
     return total;
   },
 
-  getPublicListings: async function(limit: number, offset: number): Promise<Record<string, unknown>[]> {
+  getPublicListings: async function(
+    limit: number,
+    offset: number,
+    where: Record<string, unknown>,
+    orderBy: Record<string, unknown>
+  ): Promise<Record<string, unknown>[]> {
     const listings = await prisma.listing.findMany({
-      where: {
-        status: 'active',
-        is_published: true,
-        deleted_at: null
-      },
-      orderBy: {
-        created_at: 'desc'
-      },
+      where,
+      orderBy,
       take: limit,
       skip: offset
     });

@@ -17,9 +17,71 @@ const router = express.Router();
 
 const listingResultSchema = z.record(z.string(), z.unknown());
 
+const optionalBooleanQueryParam = z
+  .preprocess((value) => {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true') {
+        return true;
+      }
+      if (normalized === 'false') {
+        return false;
+      }
+    }
+
+    return value;
+  }, z.boolean())
+  .optional();
+
+const optionalDateQueryParam = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((value) => !Number.isNaN(Date.parse(value)), 'Invalid date value')
+  .optional();
+
+const propertyTypeQueryParam = z
+  .preprocess((value) => {
+    const values = Array.isArray(value) ? value : [value];
+    const normalized = values
+      .flatMap((entry) => (typeof entry === 'string' ? entry.split(',') : []))
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+
+    return normalized.length > 0 ? normalized : undefined;
+  }, z.array(z.string().min(1)).nonempty())
+  .optional();
+
 const publicListingsQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20)
+  limit: z.coerce.number().int().positive().max(100).default(20),
+  q: z.string().trim().min(1).optional(),
+  propertyType: propertyTypeQueryParam,
+  minPrice: z.coerce.number().nonnegative().optional(),
+  maxPrice: z.coerce.number().nonnegative().optional(),
+  bedrooms: z.union([z.coerce.number().int().positive(), z.string().regex(/^\d+\+$/)]).optional(),
+  bathrooms: z.coerce.number().nonnegative().optional(),
+  parkingSpaces: z.coerce.number().int().nonnegative().optional(),
+  parkingType: z.string().trim().min(1).optional(),
+  minLivingArea: z.coerce.number().nonnegative().optional(),
+  maxLivingArea: z.coerce.number().nonnegative().optional(),
+  minLandSize: z.coerce.number().nonnegative().optional(),
+  maxLandSize: z.coerce.number().nonnegative().optional(),
+  furnished: optionalBooleanQueryParam,
+  availableFrom: optionalDateQueryParam,
+  rentalTerm: z.string().trim().min(1).optional(),
+  petFriendly: optionalBooleanQueryParam,
+  garden: optionalBooleanQueryParam,
+  pool: optionalBooleanQueryParam,
+  flatlet: optionalBooleanQueryParam,
+  retirement: optionalBooleanQueryParam,
+  onShow: optionalBooleanQueryParam,
+  securityEstate: optionalBooleanQueryParam,
+  sortBy: z.enum(['price_asc', 'price_desc', 'date_desc', 'date_asc']).default('date_desc')
 });
 
 const privateListingsQuerySchema = z.object({
@@ -119,7 +181,7 @@ registerApiRoute({
   method: 'get',
   path: '/api/listings/public',
   summary: 'Get public listings',
-  description: 'Returns paginated public listings with page and limit query filters.',
+  description: 'Returns paginated public listings with filtering, sorting, and text search.',
   tags: ['Listings'],
   request: {
     query: publicListingsQuerySchema
@@ -264,11 +326,6 @@ router.get('/listings/public', (req, res, next) => {
       message: parsedQuery.error.issues.map((issue) => issue.message).join(', ')
     });
   }
-
-  req.query = {
-    page: String(parsedQuery.data.page),
-    limit: String(parsedQuery.data.limit)
-  };
 
   return getPublicListings(req, res, next);
 });

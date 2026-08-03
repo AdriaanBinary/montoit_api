@@ -37,11 +37,26 @@ model Listing {
   user_id            String            @db.VarChar(16)
   title              String?           @db.Text
   description        String?           @db.Text
+  location           String?           @db.Text
   property_type      String?           @db.VarChar(50)
   bedrooms           Int?
   bathrooms          Decimal?          @db.Decimal(3, 1)
   property_size      Decimal?          @db.Decimal(8, 2)
+  living_area        Decimal?          @db.Decimal(8, 2)
+  land_size          Decimal?          @db.Decimal(8, 2)
   amount             Decimal?          @db.Decimal(12, 2)
+  furnished          Boolean?
+  available_from     DateTime?         @db.Timestamptz(6)
+  rental_term        String?           @db.VarChar(50)
+  parking_spaces     Int?
+  parking_type       String?           @db.VarChar(50)
+  pet_friendly       Boolean?          @default(false)
+  garden             Boolean?          @default(false)
+  pool               Boolean?          @default(false)
+  flatlet            Boolean?          @default(false)
+  retirement         Boolean?          @default(false)
+  on_show            Boolean?          @default(false)
+  security_estate    Boolean?          @default(false)
   currency           String            @default("USD") @db.Char(3)
   features           String[]
   other              String[]
