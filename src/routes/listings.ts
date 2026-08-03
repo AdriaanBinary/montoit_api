@@ -1,5 +1,6 @@
 import express from 'express';
 import {
+  confirmListingImageUpload,
   createListing,
   getListingById,
   getPublicListingById,
@@ -18,6 +19,7 @@ router.get('/listings/private', checkAuth, getPrivateListings);
 router.post('/listings', checkAuth, createListing);
 router.post('/listings/:id/publish', checkAuth, publishListing);
 router.post('/listings/:id/images', checkAuth, uploadListingImages);
+router.post('/listings/:listingId/images/:imageId/confirm', checkAuth, confirmListingImageUpload);
 router.get('/listings/:id', checkAuth, getListingById);
 
 export default router;

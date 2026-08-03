@@ -27,6 +27,16 @@ export interface ListingImageInsertResult {
   listing_id: number;
   object_key: string;
   sort_order: number;
+  upload_confirmed: boolean;
+  created_at: string;
+}
+
+export interface ListingImageRecord {
+  id: string;
+  listing_id: number;
+  object_key: string;
+  sort_order: number;
+  upload_confirmed: boolean;
   created_at: string;
 }
 
@@ -87,8 +97,19 @@ const listingsDb = {
         sort_order INTEGER NOT NULL DEFAULT 0,
         width INTEGER,
         height INTEGER,
+        upload_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )
+    `);
+
+    await MontoitDB.query(`
+      ALTER TABLE listing_images
+      ADD COLUMN IF NOT EXISTS upload_confirmed BOOLEAN NOT NULL DEFAULT FALSE
+    `);
+
+    await MontoitDB.query(`
+      ALTER TABLE listing_images
+      ALTER COLUMN upload_confirmed SET DEFAULT FALSE
     `);
   },
 
@@ -98,25 +119,51 @@ const listingsDb = {
     sortOrder: number
   ): Promise<ListingImageInsertResult> {
     const result = await MontoitDB.query(
-      `INSERT INTO listing_images (listing_id, object_key, sort_order, created_at)
-       VALUES ($1, $2, $3, NOW())
-       RETURNING id, listing_id, object_key, sort_order, created_at`,
+      `INSERT INTO listing_images (listing_id, object_key, sort_order, upload_confirmed, created_at)
+       VALUES ($1, $2, $3, FALSE, NOW())
+       RETURNING id, listing_id, object_key, sort_order, upload_confirmed, created_at`,
       [listingId, objectKey, sortOrder]
     );
 
     return result.rows[0] as ListingImageInsertResult;
   },
 
-  getListingImageObjectKeys: async function(listingId: number): Promise<string[]> {
+  getListingImages: async function(listingId: number): Promise<ListingImageRecord[]> {
     const result = await MontoitDB.query(
-      `SELECT object_key
+      `SELECT id, listing_id, object_key, sort_order, upload_confirmed, created_at
        FROM listing_images
-       WHERE listing_id = $1
+       WHERE listing_id = $1 AND upload_confirmed = TRUE
        ORDER BY sort_order ASC, created_at ASC`,
       [listingId]
     );
 
-    return result.rows.map((row) => String(row.object_key));
+    return result.rows as ListingImageRecord[];
+  },
+
+  getListingImageById: async function(listingId: number, imageId: string): Promise<ListingImageRecord | null> {
+    const result = await MontoitDB.query(
+      `SELECT id, listing_id, object_key, sort_order, upload_confirmed, created_at
+       FROM listing_images
+       WHERE listing_id = $1 AND id = $2::uuid`,
+      [listingId, imageId]
+    );
+
+    return (result.rows[0] as ListingImageRecord | undefined) ?? null;
+  },
+
+  confirmListingImageUpload: async function(
+    listingId: number,
+    imageId: string
+  ): Promise<ListingImageRecord | null> {
+    const result = await MontoitDB.query(
+      `UPDATE listing_images
+       SET upload_confirmed = TRUE
+       WHERE listing_id = $1 AND id = $2::uuid
+       RETURNING id, listing_id, object_key, sort_order, upload_confirmed, created_at`,
+      [listingId, imageId]
+    );
+
+    return (result.rows[0] as ListingImageRecord | undefined) ?? null;
   },
 
   countPrivateListings: async function(userId: string): Promise<number> {

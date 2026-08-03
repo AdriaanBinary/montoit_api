@@ -1,4 +1,4 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { RequestHandler } from 'express';
 import listingsDb from '../db/listings.js';
@@ -77,6 +77,26 @@ async function buildPresignedPutUrl(bucket: string, key: string, contentType: st
   });
 
   return getSignedUrl(s3Client, command, { expiresIn: 3600 });
+}
+
+async function objectExistsInS3(bucket: string, key: string): Promise<boolean> {
+  try {
+    await s3Client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+    return true;
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'name' in error) {
+      const errorName = String((error as { name?: string }).name);
+      if (errorName === 'NotFound' || errorName === 'NoSuchKey') {
+        return false;
+      }
+    }
+
+    throw error;
+  }
+}
+
+export function filterConfirmedImages(images: Array<{ id?: string; object_key?: string; upload_confirmed?: boolean }>) {
+  return images.filter((image) => image.upload_confirmed === true);
 }
 
 function normalizeListingStatus(status?: string): 'draft' | 'active' | 'archived' | 'sold' {
@@ -235,6 +255,56 @@ export const uploadListingImages: RequestHandler = async (req, res) => {
   }
 };
 
+export const confirmListingImageUpload: RequestHandler = async (req, res) => {
+  const userId = (req as AuthenticatedRequest).user?.user_id;
+  const listingId = Number(req.params.listingId);
+  const imageId = req.params.imageId;
+
+  if (!userId) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  if (!Number.isInteger(listingId) || !imageId) {
+    return res.status(400).json({ success: false, error: 'Invalid listing or image id' });
+  }
+
+  try {
+    const listing = await listingsDb.getOwnedListingById(listingId, userId);
+
+    if (!listing) {
+      return res.status(404).json({ success: false, error: 'Listing not found' });
+    }
+
+    const bucketName = process.env.AWS_S3_BUCKET ?? 'property-images';
+    const existingImage = await listingsDb.getListingImageById(listingId, imageId);
+
+    if (!existingImage) {
+      return res.status(404).json({ success: false, error: 'Image not found' });
+    }
+
+    const existsInS3 = await objectExistsInS3(bucketName, existingImage.object_key);
+
+    if (!existsInS3) {
+      return res.status(404).json({ success: false, error: 'Uploaded image not found in storage' });
+    }
+
+    const confirmedImage = await listingsDb.confirmListingImageUpload(listingId, imageId);
+
+    if (!confirmedImage) {
+      return res.status(404).json({ success: false, error: 'Image not found' });
+    }
+
+    return res.json({ success: true, image: confirmedImage });
+  } catch (error: unknown) {
+    console.error('Confirm listing image upload error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to confirm image upload',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
 export const getListingById: RequestHandler = async (req, res) => {
   const userId = (req as AuthenticatedRequest).user?.user_id;
   const listingId = Number(req.params.id);
@@ -254,16 +324,22 @@ export const getListingById: RequestHandler = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Listing not found' });
     }
 
-    const objectKeys = await listingsDb.getListingImageObjectKeys(listingId);
+    const imagesData = await listingsDb.getListingImages(listingId);
+    const confirmedImages = filterConfirmedImages(
+      imagesData as Array<{ id?: string; object_key?: string; upload_confirmed?: boolean }>
+    );
 
     const images = [] as Array<Record<string, unknown>>;
     const bucketName = process.env.AWS_S3_BUCKET ?? 'property-images';
 
-    for (const objectKey of objectKeys) {
+    for (const image of confirmedImages) {
+      const objectKey = String(image.object_key);
       const viewUrl = await buildPresignedGetUrl(bucketName, objectKey);
       images.push({
+        id: image.id,
         bucket: bucketName,
         object_key: objectKey,
+        upload_confirmed: image.upload_confirmed,
         url: viewUrl
       });
     }
@@ -293,16 +369,22 @@ export const getPublicListingById: RequestHandler = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Listing not found' });
     }
 
-    const objectKeys = await listingsDb.getListingImageObjectKeys(listingId);
+    const imagesData = await listingsDb.getListingImages(listingId);
+    const confirmedImages = filterConfirmedImages(
+      imagesData as Array<{ id?: string; object_key?: string; upload_confirmed?: boolean }>
+    );
 
     const images = [] as Array<Record<string, unknown>>;
     const bucketName = process.env.AWS_S3_BUCKET ?? 'property-images';
 
-    for (const objectKey of objectKeys) {
+    for (const image of confirmedImages) {
+      const objectKey = String(image.object_key);
       const viewUrl = await buildPresignedGetUrl(bucketName, objectKey);
       images.push({
+        id: image.id,
         bucket: bucketName,
         object_key: objectKey,
+        upload_confirmed: image.upload_confirmed,
         url: viewUrl
       });
     }
