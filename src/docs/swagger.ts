@@ -75,7 +75,7 @@ export function buildOpenApiDocument() {
       version: '1.0.0',
       description: 'API documentation for the Montoit listings and agency platform.'
     },
-    servers: [{ url: 'http://localhost:3000' }],
+    servers: [{ url: 'http://localhost:3000' }, { url: 'https://montoit-api.onrender.com' }],
     tags: [
       { name: 'Health', description: 'Server and database health checks' },
       { name: 'Auth', description: 'Authentication and user registration' },
