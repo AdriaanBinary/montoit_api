@@ -4,6 +4,8 @@ import autocompleteRoutes from './routes/autocomplete.js';
 import registerRoutes from './routes/auth/register.js';
 import loginRoutes from './routes/auth/login.js';
 import listingsRoutes from './routes/listings.js';
+import agenciesRoutes from './routes/agencies.js';
+import docsRoutes from './routes/docs.js';
 import MontoitDB from './db/pool.js';
 
 const app = express();
@@ -23,6 +25,8 @@ app.use('/api/auth/', loginRoutes);
 // Routes
 app.use('/api', autocompleteRoutes);
 app.use('/api', listingsRoutes);
+app.use('/api', agenciesRoutes);
+app.use('/', docsRoutes);
 
 app.get('/api/db-test', async (_req: Request, res: Response) => {
   try {

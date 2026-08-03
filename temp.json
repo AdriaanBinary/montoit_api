@@ -1,0 +1,192 @@
+{
+    "meta":{
+      "title": "Vanguard Atelier | Handcrafted Luxury Goods",
+      "description": "Bespoke leather goods, artisanal timepieces, and timeless lifestyle essentials crafted with uncompromising precision.",
+      "keywords": "luxury goods, handcrafted, leather goods, timepieces, artisanal, bespoke, craftsmanship, lifestyle essentials",
+      "author": "Vanguard Atelier",
+      "viewport": "width=device-width, initial-scale=1.0",
+      "favicon": "/images/favicon.ico"
+    },
+    "theme": {
+        "primary": "#18181B",
+        "secondary": "#FFFFFF",
+        "accent": "#C89B5D",
+        "background": "#FAFAFA",
+        "borderRadius": "lg",
+        "font": "Playfair Display"
+    },
+    "product-card-suite": "v1", // Options: v1, v2, v3 are selected product card suites, each with unique layouts and styles. Choose the one that best fits your brand's aesthetic and is used across the site.
+    "pages": [
+        {
+            "id": "landing",
+            "title": "Vanguard Atelier | Handcrafted Luxury Goods",
+            "description": "Bespoke leather goods, artisanal timepieces, and timeless lifestyle essentials crafted with uncompromising precision.",
+            "sections": [
+                {
+                    "type": "hero-v1",
+                    "content": {
+                        "headline": "Elevate Your Everyday with Vanguard Atelier",
+                        "subheadline": "Discover the art of craftsmanship in every piece.",
+                        "backgroundImage": "/images/hero-background.jpg",
+                        "button1-text": "Explore Our Collection",
+                        "button1-link": "/collection"
+                    },
+                    "motion-in-view": {
+                        "enabled": true,
+                        "type": "fade-in",
+                        "duration": 600,
+                        "delay": 100
+                    }
+                },
+                {
+                    "type": "featuredProducts-v1",
+                    "content": {
+                        "title": "Featured Products",
+                        "sort": "newest",
+                        "products": {
+                            "merchantId": "1"
+                        }
+                    },
+                    "motion-in-view": {
+                        "enabled": true,
+                        "type": "fade-in",
+                        "duration": 600,
+                        "delay": 100
+                    }
+                },
+                {
+                    "type": "aboutUs-v1",
+                    "content": {
+                        "title": "About Vanguard Atelier",
+                        "text": "At Vanguard Atelier, we believe in the timeless value of craftsmanship. Each product is meticulously designed and handcrafted to ensure unparalleled quality and elegance."
+                    },
+                    "motion-in-view": {
+                        "enabled": true,
+                        "type": "fade-in",
+                        "duration": 600,
+                        "delay": 100
+                    }
+                },
+                {
+                    "type": "testimonials-v1",
+                    "content": {    
+                        "title": "What Our Clients Say",
+                        "cardStyle": "v1",
+                        "testimonials": [
+                            {
+                                "quote": "The craftsmanship is exceptional. Every piece feels like a work of art.",
+                                "author": "Sophia L."
+                            },
+                            {
+                                "quote": "I love the attention to detail and the quality of materials used.",
+                                "author": "James K."
+                            }
+                        ]
+                    },
+                    "motion-in-view": {
+                        "enabled": true,
+                        "type": "fade-in",
+                        "duration": 600,
+                        "delay": 100
+                    }
+                },
+                {
+                    "type": "footer-v1",
+                    "logo": {
+                        "image": "https://images.unsplash.com/photo-1549298916-b41d501d3772?w=100&h=100&fit=crop&q=80",
+                        "text": "Vanguard Atelier"
+                    },
+                    "columns": [
+                        {
+                            "title": "Shop",
+                            "links": [
+                                {
+                                    "label": "All Products",
+                                    "href": "/collection",
+                                    "hover-effect": "underline"
+                                },
+                                {
+                                    "label": "Leatherware",
+                                    "href": "/collection/leatherware",
+                                    "hover-effect": "underline"
+                                },
+                                {
+                                    "label": "Timepieces",
+                                    "href": "/collection/timepieces",
+                                    "hover-effect": "underline"
+                                }
+                            ]
+                        },
+                        {
+                            "title": "Company",
+                            "links": [
+                                {
+                                    "label": "Our Heritage",
+                                    "href": "/about",
+                                    "hover-effect": "underline"
+                                },
+                                {
+                                    "label": "Artisans",
+                                    "href": "/about/artisans",
+                                    "hover-effect": "underline"
+                                },
+                                {
+                                    "label": "Contact",
+                                    "href": "/contact",
+                                    "hover-effect": "underline"
+                                }
+                            ]
+                        },
+                        {
+                            "title": "Legal",
+                            "links": [
+                                {
+                                    "label": "Privacy Policy",
+                                    "href": "/privacy",
+                                    "hover-effect": "underline"
+                                },
+                                {
+                                    "label": "Terms of Service",
+                                    "href": "/terms",
+                                    "hover-effect": "underline"
+                                }
+                            ]
+                        }
+                    ],
+                    "motion-in-view": {
+                        "enabled": true,
+                        "type": "fade-in",
+                        "duration": 600,
+                        "delay": 100
+                    }
+                }
+            ]
+        },
+        {
+            "id": "collection",
+            "title": "Vanguard Atelier Collection",
+            "description": "Explore our curated selection of handcrafted leather goods and artisanal timepieces.",
+            "sections": [
+                {
+                    "type": "productGrid-v1",
+                    "content": {
+                        "title": "Our Collection",
+                        "defaultSort": "newest",
+                        "products": {
+                            "merchantId": "1"
+                        }
+                    },
+                    "motion-in-view": {
+                        "enabled": false,
+                        "type": "fade-in",
+                        "duration": 600,
+                        "delay": 100
+                    }
+                }
+            ]
+        }
+    ]
+}
+
+
+
