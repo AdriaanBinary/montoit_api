@@ -1,26 +1,42 @@
-import MontoitDB from './pool.js';
+import prisma from './prisma.js';
 
-const createListingColumns = [
-  'user_id',
-  'title',
-  'description',
-  'property_type',
-  'bedrooms',
-  'bathrooms',
-  'property_size',
-  'amount',
-  'currency',
-  'features',
-  'other',
-  'status',
-  'sold',
-  'region_id',
-  'city_id',
-  'municipality_id',
-  'neighborhood_id',
-  'is_published',
-  'verified'
-] as const;
+function asString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function asInteger(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) ? value : null;
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+}
+
+function asListingStatus(value: unknown): 'draft' | 'active' | 'archived' | 'sold' {
+  if (value === 'active') {
+    return 'active';
+  }
+  if (value === 'archived') {
+    return 'archived';
+  }
+  if (value === 'sold') {
+    return 'sold';
+  }
+
+  return 'draft';
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
+
+function toRecords(values: unknown[]): Record<string, unknown>[] {
+  return values.map((value) => toRecord(value));
+}
 
 export interface ListingImageInsertResult {
   id: string;
@@ -42,54 +58,85 @@ export interface ListingImageRecord {
 
 const listingsDb = {
   createListing: async function(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const placeholders = createListingColumns.map((_column, index) => `$${index + 1}`).join(', ');
-    const values = createListingColumns.map((column) => payload[column]);
+    const created = await prisma.listing.create({
+      data: {
+        user_id: String(payload.user_id),
+        title: asString(payload.title),
+        description: asString(payload.description),
+        property_type: asString(payload.property_type),
+        bedrooms: asInteger(payload.bedrooms),
+        bathrooms: asNumber(payload.bathrooms),
+        property_size: asNumber(payload.property_size),
+        amount: asNumber(payload.amount),
+        currency: asString(payload.currency) ?? 'USD',
+        features: asStringArray(payload.features),
+        other: asStringArray(payload.other),
+        status: asListingStatus(payload.status),
+        sold: Boolean(payload.sold ?? false),
+        region_id: asInteger(payload.region_id),
+        city_id: asInteger(payload.city_id),
+        municipality_id: asInteger(payload.municipality_id),
+        neighborhood_id: asInteger(payload.neighborhood_id),
+        is_published: Boolean(payload.is_published ?? false),
+        verified: Boolean(payload.verified ?? false)
+      }
+    });
 
-    const result = await MontoitDB.query(
-      `INSERT INTO listings (${createListingColumns.join(', ')}) VALUES (${placeholders}) RETURNING *`,
-      values
-    );
-
-    return result.rows[0] as Record<string, unknown>;
+    return toRecord(created);
   },
 
   publishListing: async function(listingId: number, userId: string): Promise<Record<string, unknown> | null> {
-    const result = await MontoitDB.query(
-      `UPDATE listings
-       SET status = 'active', is_published = TRUE, updated_at = NOW()
-       WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
-       RETURNING *`,
-      [listingId, userId]
-    );
+    const existing = await prisma.listing.findFirst({
+      where: {
+        id: listingId,
+        user_id: userId,
+        deleted_at: null
+      }
+    });
 
-    return (result.rows[0] as Record<string, unknown> | undefined) ?? null;
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await prisma.listing.update({
+      where: { id: listingId },
+      data: {
+        status: 'active',
+        is_published: true,
+        updated_at: new Date()
+      }
+    });
+
+    return toRecord(updated);
   },
 
   getOwnedListingById: async function(listingId: number, userId: string): Promise<Record<string, unknown> | null> {
-    const result = await MontoitDB.query(
-      `SELECT * FROM listings
-       WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
-      [listingId, userId]
-    );
+    const listing = await prisma.listing.findFirst({
+      where: {
+        id: listingId,
+        user_id: userId,
+        deleted_at: null
+      }
+    });
 
-    return (result.rows[0] as Record<string, unknown> | undefined) ?? null;
+    return listing ? toRecord(listing) : null;
   },
 
   getPublicListingById: async function(listingId: number): Promise<Record<string, unknown> | null> {
-    const result = await MontoitDB.query(
-      `SELECT * FROM listings
-       WHERE id = $1
-         AND status = 'active'
-         AND is_published = TRUE
-         AND deleted_at IS NULL`,
-      [listingId]
-    );
+    const listing = await prisma.listing.findFirst({
+      where: {
+        id: listingId,
+        status: 'active',
+        is_published: true,
+        deleted_at: null
+      }
+    });
 
-    return (result.rows[0] as Record<string, unknown> | undefined) ?? null;
+    return listing ? toRecord(listing) : null;
   },
 
   ensureListingImagesTable: async function(): Promise<void> {
-    await MontoitDB.query(`
+    await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS listing_images (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
@@ -102,12 +149,12 @@ const listingsDb = {
       )
     `);
 
-    await MontoitDB.query(`
+    await prisma.$executeRawUnsafe(`
       ALTER TABLE listing_images
       ADD COLUMN IF NOT EXISTS upload_confirmed BOOLEAN NOT NULL DEFAULT FALSE
     `);
 
-    await MontoitDB.query(`
+    await prisma.$executeRawUnsafe(`
       ALTER TABLE listing_images
       ALTER COLUMN upload_confirmed SET DEFAULT FALSE
     `);
@@ -118,63 +165,75 @@ const listingsDb = {
     objectKey: string,
     sortOrder: number
   ): Promise<ListingImageInsertResult> {
-    const result = await MontoitDB.query(
-      `INSERT INTO listing_images (listing_id, object_key, sort_order, upload_confirmed, created_at)
-       VALUES ($1, $2, $3, FALSE, NOW())
-       RETURNING id, listing_id, object_key, sort_order, upload_confirmed, created_at`,
-      [listingId, objectKey, sortOrder]
-    );
+    const created = await prisma.listingImage.create({
+      data: {
+        listing_id: listingId,
+        object_key: objectKey,
+        sort_order: sortOrder,
+        upload_confirmed: false
+      }
+    });
 
-    return result.rows[0] as ListingImageInsertResult;
+    return toRecord(created) as unknown as ListingImageInsertResult;
   },
 
   getListingImages: async function(listingId: number): Promise<ListingImageRecord[]> {
-    const result = await MontoitDB.query(
-      `SELECT id, listing_id, object_key, sort_order, upload_confirmed, created_at
-       FROM listing_images
-       WHERE listing_id = $1 AND upload_confirmed = TRUE
-       ORDER BY sort_order ASC, created_at ASC`,
-      [listingId]
-    );
+    const images = await prisma.listingImage.findMany({
+      where: {
+        listing_id: listingId,
+        upload_confirmed: true
+      },
+      orderBy: [{ sort_order: 'asc' }, { created_at: 'asc' }]
+    });
 
-    return result.rows as ListingImageRecord[];
+    return JSON.parse(JSON.stringify(images)) as ListingImageRecord[];
   },
 
   getListingImageById: async function(listingId: number, imageId: string): Promise<ListingImageRecord | null> {
-    const result = await MontoitDB.query(
-      `SELECT id, listing_id, object_key, sort_order, upload_confirmed, created_at
-       FROM listing_images
-       WHERE listing_id = $1 AND id = $2::uuid`,
-      [listingId, imageId]
-    );
+    const image = await prisma.listingImage.findFirst({
+      where: {
+        listing_id: listingId,
+        id: imageId
+      }
+    });
 
-    return (result.rows[0] as ListingImageRecord | undefined) ?? null;
+    return image ? (toRecord(image) as unknown as ListingImageRecord) : null;
   },
 
   confirmListingImageUpload: async function(
     listingId: number,
     imageId: string
   ): Promise<ListingImageRecord | null> {
-    const result = await MontoitDB.query(
-      `UPDATE listing_images
-       SET upload_confirmed = TRUE
-       WHERE listing_id = $1 AND id = $2::uuid
-       RETURNING id, listing_id, object_key, sort_order, upload_confirmed, created_at`,
-      [listingId, imageId]
-    );
+    const image = await prisma.listingImage.findFirst({
+      where: {
+        listing_id: listingId,
+        id: imageId
+      }
+    });
 
-    return (result.rows[0] as ListingImageRecord | undefined) ?? null;
+    if (!image) {
+      return null;
+    }
+
+    const updated = await prisma.listingImage.update({
+      where: { id: imageId },
+      data: {
+        upload_confirmed: true
+      }
+    });
+
+    return toRecord(updated) as unknown as ListingImageRecord;
   },
 
   countPrivateListings: async function(userId: string): Promise<number> {
-    const result = await MontoitDB.query(
-      `SELECT COUNT(*)::int AS total
-       FROM listings
-       WHERE user_id = $1 AND deleted_at IS NULL`,
-      [userId]
-    );
+    const total = await prisma.listing.count({
+      where: {
+        user_id: userId,
+        deleted_at: null
+      }
+    });
 
-    return Number(result.rows[0]?.total ?? 0);
+    return total;
   },
 
   getPrivateListings: async function(
@@ -182,39 +241,48 @@ const listingsDb = {
     limit: number,
     offset: number
   ): Promise<Record<string, unknown>[]> {
-    const result = await MontoitDB.query(
-      `SELECT *
-       FROM listings
-       WHERE user_id = $1 AND deleted_at IS NULL
-       ORDER BY created_at DESC
-       LIMIT $2 OFFSET $3`,
-      [userId, limit, offset]
-    );
+    const listings = await prisma.listing.findMany({
+      where: {
+        user_id: userId,
+        deleted_at: null
+      },
+      orderBy: {
+        created_at: 'desc'
+      },
+      take: limit,
+      skip: offset
+    });
 
-    return result.rows as Record<string, unknown>[];
+    return toRecords(listings);
   },
 
   countPublicListings: async function(): Promise<number> {
-    const result = await MontoitDB.query(
-      `SELECT COUNT(*)::int AS total
-       FROM listings
-       WHERE status = 'active' AND is_published = TRUE AND deleted_at IS NULL`
-    );
+    const total = await prisma.listing.count({
+      where: {
+        status: 'active',
+        is_published: true,
+        deleted_at: null
+      }
+    });
 
-    return Number(result.rows[0]?.total ?? 0);
+    return total;
   },
 
   getPublicListings: async function(limit: number, offset: number): Promise<Record<string, unknown>[]> {
-    const result = await MontoitDB.query(
-      `SELECT *
-       FROM listings
-       WHERE status = 'active' AND is_published = TRUE AND deleted_at IS NULL
-       ORDER BY created_at DESC
-       LIMIT $1 OFFSET $2`,
-      [limit, offset]
-    );
+    const listings = await prisma.listing.findMany({
+      where: {
+        status: 'active',
+        is_published: true,
+        deleted_at: null
+      },
+      orderBy: {
+        created_at: 'desc'
+      },
+      take: limit,
+      skip: offset
+    });
 
-    return result.rows as Record<string, unknown>[];
+    return toRecords(listings);
   }
 };
 

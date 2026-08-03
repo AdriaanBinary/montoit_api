@@ -1,4 +1,4 @@
-import MontoitDB from './pool.js';
+import prisma from './prisma.js';
 
 export interface Suggestion {
   name: string;
@@ -7,26 +7,6 @@ export interface Suggestion {
 }
 
 const queries = {
-  updateData: async function(tableName: string, data: Record<string, unknown>, whereClause: string): Promise<boolean> {
-    const entries = Object.entries(data).filter(([_key, value]) => value !== undefined && value !== null);
-
-    if (entries.length === 0) {
-      throw new Error('No fields provided to update');
-    }
-
-    const setClauses = entries.map(([key], index) => `${key} = $${index + 1}`);
-    const values = entries.map(([_key, value]) => value);
-
-    const sql = `
-      UPDATE ${tableName}
-      SET ${setClauses.join(', ')}
-      WHERE ${whereClause}
-    `;
-
-    await MontoitDB.query(sql, values);
-    return true;
-  },
-
   getTopSuggestions: async function(userInput: string, limit = 8): Promise<Suggestion[]> {
     const cleanInput = userInput.trim();
     if (cleanInput.length < 2) return [];
@@ -75,21 +55,21 @@ const queries = {
         LIMIT $3;
       `;
 
-      const res = await MontoitDB.query(query, [`%${cleanInput}%`, cleanInput, limit]);
-      return res.rows as Suggestion[];
+      const rows = await prisma.$queryRawUnsafe<Array<{ name: string; type: string; id: string | number }>>(
+        query,
+        `%${cleanInput}%`,
+        cleanInput,
+        limit
+      );
+
+      return rows.map((row) => ({
+        name: row.name,
+        type: row.type,
+        id: String(row.id)
+      }));
     } catch (err: unknown) {
       console.error('Database search failed:', err);
       return [];
-    }
-  },
-
-  query: async function(sql: string, values: Array<unknown> = []): Promise<{ success: boolean; data?: unknown; error?: string }> {
-    try {
-      const res = await MontoitDB.query(sql, values);
-      return { success: true, data: res.rows };
-    } catch (error: unknown) {
-      console.error('Query execution error:', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
 };

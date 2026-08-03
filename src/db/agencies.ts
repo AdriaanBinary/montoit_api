@@ -1,5 +1,4 @@
-import MontoitDB from './pool.js';
-import { PoolClient } from 'pg';
+import prisma from './prisma.js';
 
 export interface AgencyCreatePayload {
   name: string;
@@ -31,22 +30,25 @@ export interface PromoteUserToAgentResult {
   primary_agency_id: number;
 }
 
-interface UserRoleRow {
-  role: string;
-}
-
-interface IdRow {
-  id: number;
-}
-
 function uniqueAgencyIds(agencyIds: number[]): number[] {
   return [...new Set(agencyIds)];
 }
 
-async function ensureAgenciesExist(client: PoolClient, agencyIds: number[]): Promise<void> {
+function toRecord(value: unknown): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
+
+async function ensureAgenciesExist(
+  tx: Pick<typeof prisma, 'agency'>,
+  agencyIds: number[]
+): Promise<void> {
   const uniqueIds = uniqueAgencyIds(agencyIds);
-  const result = await client.query<IdRow>('SELECT id FROM agencies WHERE id = ANY($1::int[])', [uniqueIds]);
-  const found = new Set(result.rows.map((row) => row.id));
+  const existingAgencies = await tx.agency.findMany({
+    where: { id: { in: uniqueIds } },
+    select: { id: true }
+  });
+
+  const found = new Set(existingAgencies.map((row) => row.id));
   const missing = uniqueIds.filter((id) => !found.has(id));
 
   if (missing.length > 0) {
@@ -55,123 +57,132 @@ async function ensureAgenciesExist(client: PoolClient, agencyIds: number[]): Pro
 }
 
 async function setUserAgencyLinks(
-  client: PoolClient,
+  tx: Pick<typeof prisma, 'agencyAgent'>,
   userId: string,
   agencyIds: number[],
   primaryAgencyId: number
 ): Promise<number> {
   const uniqueIds = uniqueAgencyIds(agencyIds);
 
-  await client.query(
-    `UPDATE agency_agents
-     SET is_primary = FALSE,
-         updated_at = NOW()
-     WHERE user_id = $1`,
-    [userId]
-  );
+  await tx.agencyAgent.updateMany({
+    where: { user_id: userId },
+    data: {
+      is_primary: false,
+      updated_at: new Date()
+    }
+  });
 
-  const upsertResult = await client.query(
-    `INSERT INTO agency_agents (agency_id, user_id, is_primary, joined_at, created_at, updated_at)
-     SELECT agency_id,
-            $2,
-            CASE WHEN agency_id = $3 THEN TRUE ELSE FALSE END,
-            NOW(),
-            NOW(),
-            NOW()
-     FROM UNNEST($1::int[]) AS agency_id
-     ON CONFLICT (agency_id, user_id)
-     DO UPDATE
-       SET is_primary = EXCLUDED.is_primary,
-           updated_at = NOW()
-     RETURNING agency_id`,
-    [uniqueIds, userId, primaryAgencyId]
-  );
+  for (const agencyId of uniqueIds) {
+    await tx.agencyAgent.upsert({
+      where: {
+        agency_id_user_id: {
+          agency_id: agencyId,
+          user_id: userId
+        }
+      },
+      create: {
+        agency_id: agencyId,
+        user_id: userId,
+        is_primary: agencyId === primaryAgencyId,
+        joined_at: new Date(),
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      update: {
+        is_primary: agencyId === primaryAgencyId,
+        updated_at: new Date()
+      }
+    });
+  }
 
-  return upsertResult.rowCount ?? 0;
+  return uniqueIds.length;
 }
 
-async function convertPrivateListingsToAgent(client: PoolClient, userId: string, primaryAgencyId: number): Promise<number> {
-  const result = await client.query(
-    `UPDATE listings
-     SET listing_owner_type = 'AGENT',
-         agency_id = COALESCE(agency_id, $2),
-         updated_at = NOW()
-     WHERE user_id = $1
-       AND deleted_at IS NULL
-       AND COALESCE(listing_owner_type::text, 'PRIVATE') = 'PRIVATE'`,
-    [userId, primaryAgencyId]
-  );
+async function convertPrivateListingsToAgent(
+  tx: Pick<typeof prisma, 'listing'>,
+  userId: string,
+  primaryAgencyId: number
+): Promise<number> {
+  const setAgencyResult = await tx.listing.updateMany({
+    where: {
+      user_id: userId,
+      deleted_at: null,
+      agency_id: null,
+      OR: [{ listing_owner_type: null }, { listing_owner_type: 'PRIVATE' }]
+    },
+    data: {
+      listing_owner_type: 'AGENT',
+      agency_id: primaryAgencyId,
+      updated_at: new Date()
+    }
+  });
 
-  return result.rowCount ?? 0;
+  const keepExistingAgencyResult = await tx.listing.updateMany({
+    where: {
+      user_id: userId,
+      deleted_at: null,
+      NOT: { agency_id: null },
+      OR: [{ listing_owner_type: null }, { listing_owner_type: 'PRIVATE' }]
+    },
+    data: {
+      listing_owner_type: 'AGENT',
+      updated_at: new Date()
+    }
+  });
+
+  return setAgencyResult.count + keepExistingAgencyResult.count;
 }
 
 const agenciesDb = {
   createAgency: async function(payload: AgencyCreatePayload): Promise<Record<string, unknown>> {
-    const result = await MontoitDB.query(
-      `INSERT INTO agencies (
-         name,
-         slug,
-         description,
-         email,
-         phone,
-         website,
-         address_line1,
-         address_line2,
-         region_id,
-         city_id,
-         municipality_id,
-         neighborhood_id,
-         created_by_user_id,
-         created_at,
-         updated_at
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
-       RETURNING *`,
-      [
-        payload.name,
-        payload.slug,
-        payload.description,
-        payload.email,
-        payload.phone,
-        payload.website,
-        payload.address_line1,
-        payload.address_line2,
-        payload.region_id,
-        payload.city_id,
-        payload.municipality_id,
-        payload.neighborhood_id,
-        payload.created_by_user_id
-      ]
-    );
+    const created = await prisma.agency.create({
+      data: {
+        name: payload.name,
+        slug: payload.slug,
+        description: payload.description,
+        email: payload.email,
+        phone: payload.phone,
+        website: payload.website,
+        address_line1: payload.address_line1,
+        address_line2: payload.address_line2,
+        region_id: payload.region_id,
+        city_id: payload.city_id,
+        municipality_id: payload.municipality_id,
+        neighborhood_id: payload.neighborhood_id,
+        created_by_user_id: payload.created_by_user_id
+      }
+    });
 
-    return result.rows[0] as Record<string, unknown>;
+    return toRecord(created);
   },
 
   promoteUserToAgent: async function(payload: PromoteUserToAgentPayload): Promise<PromoteUserToAgentResult> {
-    const client = await MontoitDB.connect();
-
-    try {
-      await client.query('BEGIN');
-
-      const userResult = await client.query<UserRoleRow>('SELECT role FROM users WHERE id = $1 FOR UPDATE', [payload.userId]);
-      const user = userResult.rows[0];
+    return prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: payload.userId },
+        select: { role: true }
+      });
 
       if (!user) {
         throw new Error('User not found');
       }
 
-      await ensureAgenciesExist(client, payload.agencyIds);
+      await ensureAgenciesExist(tx, payload.agencyIds);
 
-      const linkedCount = await setUserAgencyLinks(client, payload.userId, payload.agencyIds, payload.primaryAgencyId);
+      const linkedCount = await setUserAgencyLinks(tx, payload.userId, payload.agencyIds, payload.primaryAgencyId);
 
       const roleChanged = user.role !== 'AGENT';
       if (roleChanged) {
-        await client.query('UPDATE users SET role = $2, updated_at = NOW() WHERE id = $1', [payload.userId, 'AGENT']);
+        await tx.user.update({
+          where: { id: payload.userId },
+          data: {
+            role: 'AGENT',
+            updated_at: new Date()
+          }
+        });
       }
 
-      const convertedListings = await convertPrivateListingsToAgent(client, payload.userId, payload.primaryAgencyId);
-
-      await client.query('COMMIT');
+      const convertedListings = await convertPrivateListingsToAgent(tx, payload.userId, payload.primaryAgencyId);
 
       return {
         user_id: payload.userId,
@@ -180,12 +191,7 @@ const agenciesDb = {
         converted_listing_count: convertedListings,
         primary_agency_id: payload.primaryAgencyId
       };
-    } catch (error: unknown) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    });
   }
 };
 

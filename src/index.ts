@@ -7,7 +7,7 @@ import loginRoutes from './routes/auth/login.js';
 import listingsRoutes from './routes/listings.js';
 import agenciesRoutes from './routes/agencies.js';
 import docsRoutes from './routes/docs.js';
-import MontoitDB from './db/pool.js';
+import prisma from './db/prisma.js';
 import { registerApiRoute } from './docs/swagger.js';
 
 const app = express();
@@ -70,11 +70,11 @@ app.use('/', docsRoutes);
 
 app.get('/api/db-test', async (_req: Request, res: Response) => {
   try {
-    const result = await MontoitDB.query('SELECT NOW()');
+    const result = await prisma.$queryRaw<Array<{ now: Date }>>`SELECT NOW() AS now`;
     res.json({
       success: true,
       message: 'Database connection successful',
-      timestamp: result.rows[0].now
+      timestamp: result[0]?.now
     });
   } catch (error: unknown) {
     console.error('Database test error:', error);
