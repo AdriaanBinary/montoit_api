@@ -9,16 +9,22 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "prisma:generate": "prisma generate",
+    "prisma:pull": "prisma db pull"
   },
   "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^9.1.0",
     "@aws-sdk/client-s3": "^3.1090.0",
     "@aws-sdk/s3-request-presigner": "^3.1090.0",
+    "@prisma/client": "^7.9.1",
     "bcrypt": "^5.1.1",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.0",
-    "pg": "^8.11.3"
+    "pg": "^8.11.3",
+    "swagger-ui-express": "^5.0.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
@@ -26,6 +32,8 @@
     "@types/jsonwebtoken": "^9.0.2",
     "@types/node": "^20.14.3",
     "@types/pg": "^8.20.0",
+    "@types/swagger-ui-express": "^4.1.8",
+    "prisma": "^7.9.1",
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.23.1",
     "typescript": "^5.6.0"

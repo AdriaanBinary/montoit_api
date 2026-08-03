@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import autocompleteRoutes from './routes/autocomplete.js';
 import registerRoutes from './routes/auth/register.js';
 import loginRoutes from './routes/auth/login.js';
@@ -7,9 +8,48 @@ import listingsRoutes from './routes/listings.js';
 import agenciesRoutes from './routes/agencies.js';
 import docsRoutes from './routes/docs.js';
 import MontoitDB from './db/pool.js';
+import { registerApiRoute } from './docs/swagger.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+
+const healthResponseSchema = z.object({
+  status: z.string(),
+  message: z.string()
+});
+
+const dbTestResponseSchema = z.object({
+  success: z.literal(true),
+  message: z.string(),
+  timestamp: z.union([z.string(), z.date()])
+});
+
+const dbTestErrorSchema = z.object({
+  success: z.literal(false),
+  error: z.string(),
+  message: z.string()
+});
+
+registerApiRoute({
+  method: 'get',
+  path: '/health',
+  summary: 'Health check',
+  tags: ['Health'],
+  responses: {
+    200: { description: 'API is alive', schema: healthResponseSchema }
+  }
+});
+
+registerApiRoute({
+  method: 'get',
+  path: '/api/db-test',
+  summary: 'Database connectivity check',
+  tags: ['Health'],
+  responses: {
+    200: { description: 'Database connection successful', schema: dbTestResponseSchema },
+    500: { description: 'Database connection failed', schema: dbTestErrorSchema }
+  }
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

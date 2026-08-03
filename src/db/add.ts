@@ -1,4 +1,4 @@
-import MontoitDB from './pool.js';
+import prisma from './prisma.js';
 import { hashPassword } from '../utils/passwordUtils.js';
 import getData from './get.js';
 
@@ -20,8 +20,12 @@ function generateUserId(): string {
 
 async function generateUniqueUserId(): Promise<string> {
   const userId = generateUserId();
-  const existing = await MontoitDB.query('SELECT 1 FROM users WHERE id = $1 LIMIT 1', [userId]);
-  return existing.rows.length > 0 ? generateUniqueUserId() : userId;
+  const existing = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true }
+  });
+
+  return existing ? generateUniqueUserId() : userId;
 }
 
 const addData = {
@@ -38,16 +42,28 @@ const addData = {
 
     const hashedPassword = await hashPassword(password);
     const userId = await generateUniqueUserId();
-    const date = new Date();
 
-    const insertSql = `
-      INSERT INTO users (id, username, email, password, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $5)
-      RETURNING id, username, email, created_at
-    `;
+    const user = await prisma.user.create({
+      data: {
+        id: userId,
+        username,
+        email,
+        password: hashedPassword
+      },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        created_at: true
+      }
+    });
 
-    const result = await MontoitDB.query(insertSql, [userId, username, email, hashedPassword, date]);
-    return result.rows[0] as CreatedUser;
+    return {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      created_at: user.created_at.toISOString()
+    };
   }
 };
 
