@@ -1,4 +1,5 @@
 import prisma from './prisma.js';
+import { ensureCameroonLocationDataInitialized } from './locations.js';
 
 export interface Suggestion {
   name: string;
@@ -12,6 +13,8 @@ const queries = {
     if (cleanInput.length < 2) return [];
 
     try {
+      await ensureCameroonLocationDataInitialized();
+
       const query = `
         WITH combined_search AS (
           SELECT r.name AS display_name, 'region' AS type, r.id AS id, 1 AS sort_weight

@@ -81,7 +81,7 @@ const listingsDb = {
         bathrooms: asNumber(payload.bathrooms),
         property_size: asNumber(payload.property_size),
         amount: asNumber(payload.amount),
-        currency: asString(payload.currency) ?? 'USD',
+        currency: asString(payload.currency) ?? 'XAF',
         features: asStringArray(payload.features),
         other: asStringArray(payload.other),
         status: asListingStatus(payload.status),

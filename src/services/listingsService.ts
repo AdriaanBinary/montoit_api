@@ -3,6 +3,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Request, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import listingsDb from '../db/listings.js';
+import { LocationValidationError, validateListingLocationIds } from '../db/locations.js';
 import { AuthenticatedRequest } from '../utils/authMiddleware.js';
 
 interface ListingCreateInput {
@@ -191,7 +192,7 @@ export function normalizeCreateListingInput(input: Partial<ListingCreateInput>, 
     bathrooms: input.bathrooms ?? null,
     property_size: input.property_size ?? null,
     amount: input.amount ?? null,
-    currency: input.currency ?? 'USD',
+    currency: input.currency ?? 'XAF',
     features,
     other,
     status: normalizedStatus,
@@ -214,10 +215,25 @@ export const createListing: RequestHandler = async (req, res) => {
 
   try {
     const payload = normalizeCreateListingInput(req.body as Partial<ListingCreateInput>, userId);
+    await validateListingLocationIds({
+      region_id: payload.region_id,
+      city_id: payload.city_id,
+      municipality_id: payload.municipality_id,
+      neighborhood_id: payload.neighborhood_id
+    });
+
     const createdListing = await listingsDb.createListing(payload as Record<string, unknown>);
 
     return res.status(201).json({ success: true, listing: createdListing });
   } catch (error: unknown) {
+    if (error instanceof LocationValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid request body',
+        message: error.message
+      });
+    }
+
     console.error('Create listing error:', error);
     return res.status(500).json({
       success: false,
@@ -556,6 +572,13 @@ export const updateListing: RequestHandler = async (req, res) => {
       });
     }
 
+    await validateListingLocationIds({
+      region_id: body.region_id,
+      city_id: body.city_id,
+      municipality_id: body.municipality_id,
+      neighborhood_id: body.neighborhood_id
+    });
+
     const updatedListing = await listingsDb.updateOwnedListing(listingId, userId, body as Record<string, unknown>);
 
     if (!updatedListing) {
@@ -564,6 +587,14 @@ export const updateListing: RequestHandler = async (req, res) => {
 
     return res.json({ success: true, listing: updatedListing });
   } catch (error: unknown) {
+    if (error instanceof LocationValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid request body',
+        message: error.message
+      });
+    }
+
     console.error('Update listing error:', error);
     return res.status(500).json({
       success: false,
