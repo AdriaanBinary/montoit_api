@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
+import cors, { CorsOptions } from 'cors';
 import { z } from 'zod';
 import autocompleteRoutes from './routes/autocomplete.js';
 import registerRoutes from './routes/auth/register.js';
@@ -13,6 +14,35 @@ import { registerApiRoute } from './docs/swagger.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+
+function getAllowedCorsOrigins(): string[] {
+  const configuredOrigins = process.env.CORS_ALLOWED_ORIGINS;
+
+  if (!configuredOrigins || configuredOrigins.trim().length === 0) {
+    return [];
+  }
+
+  return configuredOrigins
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+}
+
+const allowedOrigins = getAllowedCorsOrigins();
+const allowAllOrigins = allowedOrigins.length === 0 || allowedOrigins.includes('*');
+
+const corsOptions: CorsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowAllOrigins || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error('Origin is not allowed by CORS'));
+  },
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204
+};
 
 const healthResponseSchema = z.object({
   status: z.string(),
@@ -54,6 +84,8 @@ registerApiRoute({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'OK', message: 'Montoit API is running' });
@@ -98,6 +130,15 @@ app.use((_req: Request, res: Response) => {
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error('Error:', err);
+
+  if (err instanceof Error && err.message === 'Origin is not allowed by CORS') {
+    return res.status(403).json({
+      success: false,
+      error: 'Forbidden',
+      message: err.message
+    });
+  }
+
   res.status(500).json({
     success: false,
     error: 'Internal Server Error',
