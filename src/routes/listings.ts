@@ -1,12 +1,15 @@
 import express from 'express';
 import { z } from 'zod';
 import {
+  createListingEnquiry,
   confirmListingImageUpload,
   createListing,
+  deleteListing,
   getListingById,
   getPublicListingById,
   getPrivateListings,
   publishListing,
+  updateListing,
   uploadListingImages
 } from '../services/listingsService.js';
 import { registerApiRoute } from '../docs/swagger.js';
@@ -98,6 +101,53 @@ const listingImageParamsSchema = z.object({
   imageId: z.string().min(1)
 });
 
+const listingEnquiryBodySchema = z.object({
+  name: z.string().trim().min(1),
+  email: z.string().email(),
+  phone: z.string().trim().min(1).optional(),
+  message: z.string().trim().min(1)
+});
+
+const listingUpdateBodySchema = z
+  .object({
+    title: z.string().optional(),
+    description: z.string().optional(),
+    location: z.string().optional(),
+    property_type: z.string().optional(),
+    bedrooms: z.coerce.number().optional(),
+    bathrooms: z.coerce.number().optional(),
+    property_size: z.coerce.number().optional(),
+    living_area: z.coerce.number().optional(),
+    land_size: z.coerce.number().optional(),
+    amount: z.coerce.number().optional(),
+    furnished: z.boolean().optional(),
+    available_from: z.coerce.date().optional(),
+    rental_term: z.string().optional(),
+    parking_spaces: z.coerce.number().optional(),
+    parking_type: z.string().optional(),
+    pet_friendly: z.boolean().optional(),
+    garden: z.boolean().optional(),
+    pool: z.boolean().optional(),
+    flatlet: z.boolean().optional(),
+    retirement: z.boolean().optional(),
+    on_show: z.boolean().optional(),
+    security_estate: z.boolean().optional(),
+    currency: z.string().optional(),
+    features: z.array(z.string()).optional(),
+    other: z.array(z.string()).optional(),
+    status: z.enum(['draft', 'active', 'archived', 'sold']).optional(),
+    sold: z.boolean().optional(),
+    region_id: z.coerce.number().int().positive().optional(),
+    city_id: z.coerce.number().int().positive().optional(),
+    municipality_id: z.coerce.number().int().positive().optional(),
+    neighborhood_id: z.coerce.number().int().positive().optional(),
+    is_published: z.boolean().optional(),
+    verified: z.boolean().optional()
+  })
+  .refine((value) => Object.values(value).some((entry) => entry !== undefined), {
+    message: 'At least one field must be provided'
+  });
+
 const createListingBodySchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
@@ -165,6 +215,11 @@ const listingCreateResponseSchema = z.object({
   listing: listingResultSchema
 });
 
+const listingEnquiryResponseSchema = z.object({
+  success: z.literal(true),
+  enquiry: z.record(z.string(), z.unknown())
+});
+
 const uploadListingImagesResponseSchema = z.object({
   success: z.literal(true),
   collection_id: z.unknown().nullable(),
@@ -206,6 +261,24 @@ registerApiRoute({
     400: { description: 'Invalid listing id', schema: simpleErrorResponseSchema },
     404: { description: 'Listing not found', schema: simpleErrorResponseSchema },
     500: { description: 'Failed to fetch listing', schema: genericErrorResponseSchema }
+  }
+});
+
+registerApiRoute({
+  method: 'post',
+  path: '/api/listings/public/{id}/enquire',
+  summary: 'Submit an enquiry for a public listing',
+  tags: ['Listings'],
+  request: {
+    params: listingIdParamsSchema,
+    body: listingEnquiryBodySchema
+  },
+  responses: {
+    201: { description: 'Enquiry created', schema: listingEnquiryResponseSchema },
+    400: { description: 'Invalid request', schema: simpleErrorResponseSchema },
+    401: { description: 'Unauthorized', schema: simpleErrorResponseSchema },
+    404: { description: 'Listing not found', schema: simpleErrorResponseSchema },
+    500: { description: 'Failed to create listing enquiry', schema: genericErrorResponseSchema }
   }
 });
 
@@ -316,6 +389,45 @@ registerApiRoute({
   }
 });
 
+registerApiRoute({
+  method: 'put',
+  path: '/api/listings/{id}',
+  summary: 'Update an owned listing',
+  tags: ['Listings'],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: listingIdParamsSchema,
+    body: listingUpdateBodySchema
+  },
+  responses: {
+    200: { description: 'Listing updated', schema: listingResponseSchema },
+    400: { description: 'Invalid request', schema: simpleErrorResponseSchema },
+    401: { description: 'Unauthorized', schema: simpleErrorResponseSchema },
+    403: { description: 'Forbidden', schema: genericErrorResponseSchema },
+    404: { description: 'Listing not found', schema: simpleErrorResponseSchema },
+    500: { description: 'Failed to update listing', schema: genericErrorResponseSchema }
+  }
+});
+
+registerApiRoute({
+  method: 'delete',
+  path: '/api/listings/{id}',
+  summary: 'Archive an owned listing',
+  tags: ['Listings'],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: listingIdParamsSchema
+  },
+  responses: {
+    200: { description: 'Listing archived', schema: listingResponseSchema },
+    400: { description: 'Invalid listing id', schema: simpleErrorResponseSchema },
+    401: { description: 'Unauthorized', schema: simpleErrorResponseSchema },
+    403: { description: 'Forbidden', schema: genericErrorResponseSchema },
+    404: { description: 'Listing not found', schema: simpleErrorResponseSchema },
+    500: { description: 'Failed to archive listing', schema: genericErrorResponseSchema }
+  }
+});
+
 router.get('/listings/public', (req, res, next) => {
   const parsedQuery = publicListingsQuerySchema.safeParse(req.query);
 
@@ -337,6 +449,26 @@ router.get('/listings/public/:id', (req, res, next) => {
   }
 
   return getPublicListingById(req, res, next);
+});
+router.post('/listings/public/:id/enquire', (req, res, next) => {
+  const parsedParams = listingIdParamsSchema.safeParse(req.params);
+
+  if (!parsedParams.success) {
+    return res.status(400).json({ success: false, error: 'Invalid listing id' });
+  }
+
+  const parsedBody = listingEnquiryBodySchema.safeParse(req.body);
+
+  if (!parsedBody.success) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid request body',
+      message: parsedBody.error.issues.map((issue) => issue.message).join(', ')
+    });
+  }
+
+  req.body = parsedBody.data;
+  return createListingEnquiry(req, res, next);
 });
 router.get('/listings/private', checkAuth, (req, res, next) => {
   const parsedQuery = privateListingsQuerySchema.safeParse(req.query);
@@ -416,6 +548,35 @@ router.get('/listings/:id', checkAuth, (req, res, next) => {
   }
 
   return getListingById(req, res, next);
+});
+router.put('/listings/:id', checkAuth, (req, res, next) => {
+  const parsedParams = listingIdParamsSchema.safeParse(req.params);
+
+  if (!parsedParams.success) {
+    return res.status(400).json({ success: false, error: 'Invalid listing id' });
+  }
+
+  const parsedBody = listingUpdateBodySchema.safeParse(req.body);
+
+  if (!parsedBody.success) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid request body',
+      message: parsedBody.error.issues.map((issue) => issue.message).join(', ')
+    });
+  }
+
+  req.body = parsedBody.data;
+  return updateListing(req, res, next);
+});
+router.delete('/listings/:id', checkAuth, (req, res, next) => {
+  const parsedParams = listingIdParamsSchema.safeParse(req.params);
+
+  if (!parsedParams.success) {
+    return res.status(400).json({ success: false, error: 'Invalid listing id' });
+  }
+
+  return deleteListing(req, res, next);
 });
 
 export default router;

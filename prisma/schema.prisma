@@ -22,6 +22,10 @@ model User {
   created_at          DateTime  @default(now()) @db.Timestamptz(6)
   updated_at          DateTime  @default(now()) @db.Timestamptz(6)
 
+  listingEnquiriesAsOwner    ListingEnquiry[] @relation("ListingEnquiryListingOwner")
+  listingEnquiriesSubmitted   ListingEnquiry[] @relation("ListingEnquirySubmittedByUser")
+  favoriteListings            UserFavorite[]
+
   @@map("users")
 }
 
@@ -74,6 +78,9 @@ model Listing {
   created_at         DateTime          @default(now()) @db.Timestamptz(6)
   updated_at         DateTime          @default(now()) @db.Timestamptz(6)
 
+  enquiries          ListingEnquiry[]
+  favorites          UserFavorite[]
+
   @@map("listings")
 }
 
@@ -88,6 +95,39 @@ model ListingImage {
   created_at       DateTime @default(now()) @db.Timestamptz(6)
 
   @@map("listing_images")
+}
+
+model ListingEnquiry {
+  id                   Int      @id @default(autoincrement())
+  listing_id           Int
+  listing_owner_user_id String   @db.VarChar(16)
+  submitted_by_user_id  String?  @db.VarChar(16)
+  name                 String   @db.VarChar(160)
+  email                String   @db.VarChar(255)
+  phone                String?  @db.VarChar(50)
+  message              String   @db.Text
+  created_at           DateTime @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime @default(now()) @db.Timestamptz(6)
+
+  listing Listing @relation(fields: [listing_id], references: [id])
+  listingOwner User @relation("ListingEnquiryListingOwner", fields: [listing_owner_user_id], references: [id])
+  submittedByUser User? @relation("ListingEnquirySubmittedByUser", fields: [submitted_by_user_id], references: [id])
+
+  @@map("listing_enquiries")
+}
+
+model UserFavorite {
+  id         Int      @id @default(autoincrement())
+  user_id    String   @db.VarChar(16)
+  listing_id Int
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [user_id], references: [id])
+  listing Listing @relation(fields: [listing_id], references: [id])
+
+  @@unique([user_id, listing_id], map: "unique_user_favorite_listing")
+  @@map("user_favorites")
 }
 
 model Agency {

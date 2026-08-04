@@ -12,6 +12,19 @@ function asInteger(value: unknown): number | null {
   return typeof value === 'number' && Number.isInteger(value) ? value : null;
 }
 
+function asDate(value: unknown): Date | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  return null;
+}
+
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
 }
@@ -110,6 +123,17 @@ const listingsDb = {
     return toRecord(updated);
   },
 
+  getListingById: async function(listingId: number): Promise<Record<string, unknown> | null> {
+    const listing = await prisma.listing.findFirst({
+      where: {
+        id: listingId,
+        deleted_at: null
+      }
+    });
+
+    return listing ? toRecord(listing) : null;
+  },
+
   getOwnedListingById: async function(listingId: number, userId: string): Promise<Record<string, unknown> | null> {
     const listing = await prisma.listing.findFirst({
       where: {
@@ -133,6 +157,136 @@ const listingsDb = {
     });
 
     return listing ? toRecord(listing) : null;
+  },
+
+  updateOwnedListing: async function(
+    listingId: number,
+    userId: string,
+    payload: Record<string, unknown>
+  ): Promise<Record<string, unknown> | null> {
+    const existing = await prisma.listing.findFirst({
+      where: {
+        id: listingId,
+        user_id: userId,
+        deleted_at: null
+      }
+    });
+
+    if (!existing) {
+      return null;
+    }
+
+    const data: Record<string, unknown> = {
+      updated_at: new Date()
+    };
+
+    if (payload.title !== undefined) data.title = typeof payload.title === 'string' ? payload.title : null;
+    if (payload.description !== undefined) data.description = typeof payload.description === 'string' ? payload.description : null;
+    if (payload.location !== undefined) data.location = typeof payload.location === 'string' ? payload.location : null;
+    if (payload.property_type !== undefined) data.property_type = typeof payload.property_type === 'string' ? payload.property_type : null;
+    if (payload.bedrooms !== undefined) data.bedrooms = asInteger(payload.bedrooms);
+    if (payload.bathrooms !== undefined) data.bathrooms = asNumber(payload.bathrooms);
+    if (payload.property_size !== undefined) data.property_size = asNumber(payload.property_size);
+    if (payload.living_area !== undefined) data.living_area = asNumber(payload.living_area);
+    if (payload.land_size !== undefined) data.land_size = asNumber(payload.land_size);
+    if (payload.amount !== undefined) data.amount = asNumber(payload.amount);
+    if (payload.furnished !== undefined) data.furnished = typeof payload.furnished === 'boolean' ? payload.furnished : null;
+    if (payload.available_from !== undefined) data.available_from = asDate(payload.available_from);
+    if (payload.rental_term !== undefined) data.rental_term = typeof payload.rental_term === 'string' ? payload.rental_term : null;
+    if (payload.parking_spaces !== undefined) data.parking_spaces = asInteger(payload.parking_spaces);
+    if (payload.parking_type !== undefined) data.parking_type = typeof payload.parking_type === 'string' ? payload.parking_type : null;
+    if (payload.pet_friendly !== undefined) data.pet_friendly = typeof payload.pet_friendly === 'boolean' ? payload.pet_friendly : null;
+    if (payload.garden !== undefined) data.garden = typeof payload.garden === 'boolean' ? payload.garden : null;
+    if (payload.pool !== undefined) data.pool = typeof payload.pool === 'boolean' ? payload.pool : null;
+    if (payload.flatlet !== undefined) data.flatlet = typeof payload.flatlet === 'boolean' ? payload.flatlet : null;
+    if (payload.retirement !== undefined) data.retirement = typeof payload.retirement === 'boolean' ? payload.retirement : null;
+    if (payload.on_show !== undefined) data.on_show = typeof payload.on_show === 'boolean' ? payload.on_show : null;
+    if (payload.security_estate !== undefined) data.security_estate = typeof payload.security_estate === 'boolean' ? payload.security_estate : null;
+    if (payload.currency !== undefined) data.currency = typeof payload.currency === 'string' ? payload.currency : null;
+    if (payload.features !== undefined) data.features = asStringArray(payload.features);
+    if (payload.other !== undefined) data.other = asStringArray(payload.other);
+    if (payload.status !== undefined) data.status = asListingStatus(payload.status);
+    if (payload.sold !== undefined) data.sold = typeof payload.sold === 'boolean' ? payload.sold : false;
+    if (payload.region_id !== undefined) data.region_id = asInteger(payload.region_id);
+    if (payload.city_id !== undefined) data.city_id = asInteger(payload.city_id);
+    if (payload.municipality_id !== undefined) data.municipality_id = asInteger(payload.municipality_id);
+    if (payload.neighborhood_id !== undefined) data.neighborhood_id = asInteger(payload.neighborhood_id);
+    if (payload.is_published !== undefined) data.is_published = typeof payload.is_published === 'boolean' ? payload.is_published : false;
+    if (payload.verified !== undefined) data.verified = typeof payload.verified === 'boolean' ? payload.verified : false;
+
+    const updated = await prisma.listing.update({
+      where: { id: listingId },
+      data
+    });
+
+    return toRecord(updated);
+  },
+
+  archiveOwnedListing: async function(listingId: number, userId: string): Promise<Record<string, unknown> | null> {
+    const existing = await prisma.listing.findFirst({
+      where: {
+        id: listingId,
+        user_id: userId,
+        deleted_at: null
+      }
+    });
+
+    if (!existing) {
+      return null;
+    }
+
+    const archived = await prisma.listing.update({
+      where: { id: listingId },
+      data: {
+        status: 'archived',
+        is_published: false,
+        deleted_at: new Date(),
+        updated_at: new Date()
+      }
+    });
+
+    return toRecord(archived);
+  },
+
+  ensureListingEnquiriesTable: async function(): Promise<void> {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS listing_enquiries (
+        id SERIAL PRIMARY KEY,
+        listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+        listing_owner_user_id VARCHAR(16) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        submitted_by_user_id VARCHAR(16) REFERENCES users(id) ON DELETE SET NULL,
+        name VARCHAR(160) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        phone VARCHAR(50),
+        message TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+  },
+
+  createListingEnquiry: async function(payload: {
+    listing_id: number;
+    listing_owner_user_id: string;
+    submitted_by_user_id?: string | null;
+    name: string;
+    email: string;
+    phone?: string | null;
+    message: string;
+  }): Promise<Record<string, unknown>> {
+    const created = await prisma.listingEnquiry.create({
+      data: {
+        listing_id: payload.listing_id,
+        listing_owner_user_id: payload.listing_owner_user_id,
+        submitted_by_user_id: payload.submitted_by_user_id ?? null,
+        name: payload.name,
+        email: payload.email,
+        phone: payload.phone ?? null,
+        message: payload.message
+      }
+    });
+
+    return toRecord(created);
   },
 
   ensureListingImagesTable: async function(): Promise<void> {

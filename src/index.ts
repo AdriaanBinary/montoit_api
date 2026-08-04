@@ -6,6 +6,7 @@ import registerRoutes from './routes/auth/register.js';
 import loginRoutes from './routes/auth/login.js';
 import listingsRoutes from './routes/listings.js';
 import agenciesRoutes from './routes/agencies.js';
+import usersRoutes from './routes/users.js';
 import docsRoutes from './routes/docs.js';
 import prisma from './db/prisma.js';
 import { registerApiRoute } from './docs/swagger.js';
@@ -65,6 +66,7 @@ app.use('/api/auth/', loginRoutes);
 // Routes
 app.use('/api', autocompleteRoutes);
 app.use('/api', listingsRoutes);
+app.use('/api', usersRoutes);
 app.use('/api', agenciesRoutes);
 app.use('/', docsRoutes);
 

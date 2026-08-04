@@ -81,6 +81,7 @@ export function buildOpenApiDocument() {
       { name: 'Auth', description: 'Authentication and user registration' },
       { name: 'Autocomplete', description: 'Location and keyword autocomplete' },
       { name: 'Listings', description: 'Public and private listing management' },
+      { name: 'Users', description: 'Saved listings and user interactions' },
       { name: 'Agencies', description: 'Agency creation and agent conversion' }
     ]
   });
