@@ -1,4 +1,6 @@
 import { Request, RequestHandler } from 'express';
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import listingsDb from '../db/listings.js';
 
 interface PublicListingsRequestQuery {
@@ -36,6 +38,84 @@ interface ParsedBedrooms {
 
 type ListingWhere = Record<string, unknown>;
 type ListingOrderBy = Record<string, unknown>;
+
+type ListingRecord = Record<string, unknown>;
+type ListingImageRecord = Record<string, unknown>;
+
+const s3Client = new S3Client({
+  forcePathStyle: true,
+  region: process.env.AWS_REGION,
+  endpoint: process.env.AWS_S3_ENDPOINT,
+  credentials:
+    process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
+      ? {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+          ...(process.env.AWS_SESSION_TOKEN ? { sessionToken: process.env.AWS_SESSION_TOKEN } : {})
+        }
+      : undefined
+});
+
+async function buildPresignedGetUrl(bucket: string, key: string): Promise<string> {
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key
+  });
+
+  return getSignedUrl(s3Client, command, { expiresIn: 3600 });
+}
+
+function asListingImages(value: unknown): ListingImageRecord[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (entry): entry is ListingImageRecord =>
+          typeof entry === 'object' && entry !== null && !Array.isArray(entry)
+      )
+    : [];
+}
+
+async function attachPublicImageUrls(listings: ListingRecord[]): Promise<ListingRecord[]> {
+  const bucketName = process.env.AWS_S3_BUCKET ?? 'property-images';
+
+  return Promise.all(
+    listings.map(async (listing) => {
+      const images = asListingImages(listing.images);
+
+      if (images.length === 0) {
+        return listing;
+      }
+
+      const hydratedImages = await Promise.all(
+        images.map(async (image) => {
+          const objectKey = typeof image.object_key === 'string' ? image.object_key : null;
+
+          if (!objectKey) {
+            return image;
+          }
+
+          try {
+            const url = await buildPresignedGetUrl(bucketName, objectKey);
+            return {
+              ...image,
+              url
+            };
+          } catch (error: unknown) {
+            console.error('Failed to build listing image URL:', error);
+            return {
+              ...image,
+              url: null
+            };
+          }
+        })
+      );
+
+      return {
+        ...listing,
+        images: hydratedImages
+      };
+    })
+  );
+}
 
 function toPositiveInt(value: unknown, fallback: number): number {
   const parsed = typeof value === 'number' ? value : Number(value);
@@ -265,6 +345,7 @@ export const getPublicListings: RequestHandler = async (req, res) => {
     const safeOffset = (safePage - 1) * itemsPerPage;
 
     const listings = await listingsDb.getPublicListings(itemsPerPage, safeOffset, where, orderBy);
+    const hydratedListings = await attachPublicImageUrls(listings);
 
     return res.json({
       success: true,
@@ -274,8 +355,8 @@ export const getPublicListings: RequestHandler = async (req, res) => {
         itemsPerPage
       },
       totalItems,
-      count: listings.length,
-      listings
+      count: hydratedListings.length,
+      listings: hydratedListings
     });
   } catch (error: unknown) {
     console.error('Get active listings error:', error);
