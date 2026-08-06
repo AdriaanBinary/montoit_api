@@ -9,6 +9,30 @@ export interface ListingLocationIds {
   neighborhood_id?: number | null;
 }
 
+export interface LocationNeighborhood {
+  id: number;
+  name: string;
+  aliases: string[];
+}
+
+export interface LocationMunicipality {
+  id: number;
+  name: string;
+  neighborhoods: LocationNeighborhood[];
+}
+
+export interface LocationCity {
+  id: number;
+  name: string;
+  municipalities: LocationMunicipality[];
+}
+
+export interface LocationRegion {
+  id: number;
+  name: string;
+  cities: LocationCity[];
+}
+
 let initializationPromise: Promise<void> | null = null;
 
 async function createLocationTables(): Promise<void> {
@@ -202,4 +226,95 @@ export async function validateListingLocationIds(locationIds: ListingLocationIds
       throw new LocationValidationError('neighborhood_id does not belong to municipality_id');
     }
   }
+}
+
+export async function getLocationHierarchyTree(): Promise<LocationRegion[]> {
+  await ensureCameroonLocationDataInitialized();
+
+  const rows = await prisma.$queryRawUnsafe<
+    Array<{
+      region_id: number;
+      region_name: string;
+      city_id: number | null;
+      city_name: string | null;
+      municipality_id: number | null;
+      municipality_name: string | null;
+      neighborhood_id: number | null;
+      neighborhood_name: string | null;
+      neighborhood_aliases: string[] | null;
+    }>
+  >(`
+    SELECT
+      r.id AS region_id,
+      r.name AS region_name,
+      c.id AS city_id,
+      c.name AS city_name,
+      m.id AS municipality_id,
+      m.name AS municipality_name,
+      n.id AS neighborhood_id,
+      n.name AS neighborhood_name,
+      n.aliases AS neighborhood_aliases
+    FROM regions r
+    LEFT JOIN cities c ON c.region_id = r.id
+    LEFT JOIN municipalities m ON m.city_id = c.id
+    LEFT JOIN neighborhoods n ON n.municipality_id = m.id
+    ORDER BY r.name, c.name, m.name, n.name
+  `);
+
+  const regionsById = new Map<number, LocationRegion>();
+
+  for (const row of rows) {
+    let region = regionsById.get(row.region_id);
+
+    if (!region) {
+      region = {
+        id: row.region_id,
+        name: row.region_name,
+        cities: []
+      };
+      regionsById.set(row.region_id, region);
+    }
+
+    if (row.city_id === null || row.city_name === null) {
+      continue;
+    }
+
+    let city = region.cities.find((item) => item.id === row.city_id);
+
+    if (!city) {
+      city = {
+        id: row.city_id,
+        name: row.city_name,
+        municipalities: []
+      };
+      region.cities.push(city);
+    }
+
+    if (row.municipality_id === null || row.municipality_name === null) {
+      continue;
+    }
+
+    let municipality = city.municipalities.find((item) => item.id === row.municipality_id);
+
+    if (!municipality) {
+      municipality = {
+        id: row.municipality_id,
+        name: row.municipality_name,
+        neighborhoods: []
+      };
+      city.municipalities.push(municipality);
+    }
+
+    if (row.neighborhood_id === null || row.neighborhood_name === null) {
+      continue;
+    }
+
+    municipality.neighborhoods.push({
+      id: row.neighborhood_id,
+      name: row.neighborhood_name,
+      aliases: Array.isArray(row.neighborhood_aliases) ? row.neighborhood_aliases : []
+    });
+  }
+
+  return Array.from(regionsById.values());
 }

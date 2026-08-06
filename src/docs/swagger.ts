@@ -80,6 +80,7 @@ export function buildOpenApiDocument() {
       { name: 'Health', description: 'Server and database health checks' },
       { name: 'Auth', description: 'Authentication and user registration' },
       { name: 'Autocomplete', description: 'Location and keyword autocomplete' },
+      { name: 'Locations', description: 'Hierarchical location data for listing forms' },
       { name: 'Listings', description: 'Public and private listing management' },
       { name: 'Users', description: 'Saved listings and user interactions' },
       { name: 'Agencies', description: 'Agency creation and agent conversion' }

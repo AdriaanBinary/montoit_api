@@ -3,6 +3,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors, { CorsOptions } from 'cors';
 import { z } from 'zod';
 import autocompleteRoutes from './routes/autocomplete.js';
+import locationsRoutes from './routes/locations.js';
 import registerRoutes from './routes/auth/register.js';
 import loginRoutes from './routes/auth/login.js';
 import listingsRoutes from './routes/listings.js';
@@ -97,6 +98,7 @@ app.use('/api/auth/', loginRoutes);
 
 // Routes
 app.use('/api', autocompleteRoutes);
+app.use('/api', locationsRoutes);
 app.use('/api', listingsRoutes);
 app.use('/api', usersRoutes);
 app.use('/api', agenciesRoutes);
