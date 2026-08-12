@@ -12,7 +12,8 @@
     "dev": "tsx watch src/index.ts",
     "prisma:generate": "prisma generate",
     "prisma:pull": "prisma db pull",
-    "prisma:push:force": "prisma db push --force-reset"
+    "prisma:push:force": "prisma db push --force-reset",
+    "seed:locations": "tsx -e \"import { ensureCameroonLocationDataInitialized } from './src/db/locations.ts'; await ensureCameroonLocationDataInitialized(); console.log('Cameroon location data initialized');\""
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.1.0",

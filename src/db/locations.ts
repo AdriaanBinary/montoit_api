@@ -75,6 +75,16 @@ async function createLocationTables(): Promise<void> {
 }
 
 async function seedCameroonLocations(): Promise<void> {
+  const [regionCount, cityCount, municipalityCount] = await Promise.all([
+    prisma.region.count(),
+    prisma.city.count(),
+    prisma.municipality.count()
+  ]);
+
+  if (regionCount > 0 || cityCount > 0 || municipalityCount > 0) {
+    return;
+  }
+
   await prisma.$executeRawUnsafe(`
     INSERT INTO regions (id, name) VALUES
     (1, 'Littoral'),
@@ -87,7 +97,6 @@ async function seedCameroonLocations(): Promise<void> {
     (8, 'North'),
     (9, 'North West'),
     (10, 'West')
-    ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
   `);
 
   await prisma.$executeRawUnsafe(`
@@ -96,7 +105,6 @@ async function seedCameroonLocations(): Promise<void> {
     (2, 2, 'Yaounde'),
     (3, 3, 'Kribi'),
     (4, 4, 'Limbe')
-    ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, region_id = EXCLUDED.region_id
   `);
 
   await prisma.$executeRawUnsafe(`
@@ -117,7 +125,6 @@ async function seedCameroonLocations(): Promise<void> {
     (14, 3, 'Kribi II'),
     (15, 4, 'Limbe I'),
     (16, 4, 'Limbe II')
-    ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, city_id = EXCLUDED.city_id
   `);
 
   await prisma.$executeRawUnsafe(`
@@ -141,8 +148,6 @@ async function seedCameroonLocations(): Promise<void> {
     (11, 'Mendong', ARRAY['Camp SIC Mendong', 'Polytechnique', 'Carrefour Simbock', 'Lycee Mendong']),
     (13, 'Ngoye', ARRAY['Ngoye Plage', 'Dombe', 'Mboa-Manga', 'Centre-ville']),
     (15, 'Bota', ARRAY['Bota Island', 'Down Beach', 'New Town', 'Mile 4', 'Ambas Bay'])
-    ON CONFLICT (municipality_id, name) DO UPDATE
-    SET aliases = EXCLUDED.aliases, updated_at = now()
   `);
 }
 

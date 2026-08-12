@@ -11,6 +11,7 @@ import agenciesRoutes from './routes/agencies.js';
 import usersRoutes from './routes/users.js';
 import docsRoutes from './routes/docs.js';
 import prisma from './db/prisma.js';
+import { ensureCameroonLocationDataInitialized } from './db/locations.js';
 import { registerApiRoute } from './docs/swagger.js';
 
 const app = express();
@@ -148,7 +149,14 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
+  try {
+    await ensureCameroonLocationDataInitialized();
+    console.log('📍 Cameroon location data initialized');
+  } catch (error) {
+    console.error('Failed to initialize Cameroon location data:', error);
+  }
+
   console.log(`🚀 Montoit API running on http://localhost:${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'DEV'}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
