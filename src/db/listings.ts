@@ -43,12 +43,12 @@ function asListingStatus(value: unknown): 'draft' | 'active' | 'archived' | 'sol
   return 'draft';
 }
 
-function asListingType(value: unknown): 'sale' | 'rent' {
-  if (value === 'rent') {
-    return 'rent';
+function asListingType(value: unknown): 'SALE' | 'RENT' {
+  if (value === 'rent' || value === 'RENT') {
+    return 'RENT';
   }
 
-  return 'sale';
+  return 'SALE';
 }
 
 function toRecord(value: unknown): Record<string, unknown> {
