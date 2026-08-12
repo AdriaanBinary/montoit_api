@@ -59,7 +59,17 @@ const propertyTypeQueryParam = z
   }, z.array(z.string().min(1)).nonempty())
   .optional();
 
-const publicListingsQuerySchema = z.object({
+const multiValuePositiveIntQueryParam = z
+  .preprocess((value) => {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    return Array.isArray(value) ? value : [value];
+  }, z.array(z.coerce.number().int().positive()).nonempty())
+  .optional();
+
+export const publicListingsQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   q: z.string().trim().min(1).optional(),
@@ -84,6 +94,10 @@ const publicListingsQuerySchema = z.object({
   retirement: optionalBooleanQueryParam,
   onShow: optionalBooleanQueryParam,
   securityEstate: optionalBooleanQueryParam,
+  region_id: multiValuePositiveIntQueryParam,
+  city_id: multiValuePositiveIntQueryParam,
+  municipality_id: multiValuePositiveIntQueryParam,
+  neighborhood_id: multiValuePositiveIntQueryParam,
   sortBy: z.enum(['price_asc', 'price_desc', 'date_desc', 'date_asc']).default('date_desc')
 });
 
@@ -114,6 +128,7 @@ const listingUpdateBodySchema = z
     description: z.string().optional(),
     location: z.string().optional(),
     property_type: z.string().optional(),
+    listing_type: z.enum(['sale', 'rent']).optional(),
     bedrooms: z.coerce.number().optional(),
     bathrooms: z.coerce.number().optional(),
     property_size: z.coerce.number().optional(),
@@ -152,6 +167,7 @@ const createListingBodySchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
   property_type: z.string().optional(),
+  listing_type: z.enum(['sale', 'rent']).optional(),
   bedrooms: z.coerce.number().optional(),
   bathrooms: z.coerce.number().optional(),
   property_size: z.coerce.number().optional(),

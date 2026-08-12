@@ -28,6 +28,10 @@ interface PublicListingsRequestQuery {
   retirement?: string | boolean;
   onShow?: string | boolean;
   securityEstate?: string | boolean;
+  region_id?: string[] | string | number[] | number;
+  city_id?: string[] | string | number[] | number;
+  municipality_id?: string[] | string | number[] | number;
+  neighborhood_id?: string[] | string | number[] | number;
   sortBy?: 'price_asc' | 'price_desc' | 'date_desc' | 'date_asc';
 }
 
@@ -149,6 +153,30 @@ function toOptionalBoolean(value: unknown): boolean | undefined {
   return undefined;
 }
 
+function toPositiveIntArray(value: unknown): number[] {
+  if (value === null || value === undefined || value === '') {
+    return [];
+  }
+
+  const entries = Array.isArray(value) ? value : [value];
+  const normalized = entries
+    .flatMap((entry) => {
+      if (typeof entry === 'number' && Number.isInteger(entry) && entry > 0) {
+        return [entry];
+      }
+
+      if (typeof entry === 'string') {
+        const parsed = Number(entry.trim());
+        return Number.isInteger(parsed) && parsed > 0 ? [parsed] : [];
+      }
+
+      return [];
+    })
+    .filter((value, index, array) => array.indexOf(value) === index);
+
+  return normalized;
+}
+
 function toPropertyTypes(value: unknown): string[] {
   if (Array.isArray(value)) {
     return Array.from(
@@ -211,33 +239,29 @@ function toSortBy(sortBy: PublicListingsRequestQuery['sortBy']): ListingOrderBy 
   }
 }
 
-export const getPublicListings: RequestHandler = async (req, res) => {
-  const typedReq = req as Request<{}, {}, {}, PublicListingsRequestQuery>;
-  const currentPage = toPositiveInt(typedReq.query.page, 1);
-  const itemsPerPage = Math.min(toPositiveInt(typedReq.query.limit, 20), 100);
-
-  const q = typedReq.query.q?.trim();
-  const propertyTypes = toPropertyTypes(typedReq.query.propertyType);
-  const minPrice = toOptionalNumber(typedReq.query.minPrice);
-  const maxPrice = toOptionalNumber(typedReq.query.maxPrice);
-  const bedrooms = toParsedBedrooms(typedReq.query.bedrooms);
-  const bathrooms = toOptionalNumber(typedReq.query.bathrooms);
-  const parkingSpaces = toOptionalNumber(typedReq.query.parkingSpaces);
-  const parkingType = typedReq.query.parkingType?.trim();
-  const minLivingArea = toOptionalNumber(typedReq.query.minLivingArea);
-  const maxLivingArea = toOptionalNumber(typedReq.query.maxLivingArea);
-  const minLandSize = toOptionalNumber(typedReq.query.minLandSize);
-  const maxLandSize = toOptionalNumber(typedReq.query.maxLandSize);
-  const furnished = toOptionalBoolean(typedReq.query.furnished);
-  const availableFrom = typedReq.query.availableFrom ? new Date(typedReq.query.availableFrom) : undefined;
-  const rentalTerm = typedReq.query.rentalTerm?.trim();
-  const petFriendly = toOptionalBoolean(typedReq.query.petFriendly);
-  const garden = toOptionalBoolean(typedReq.query.garden);
-  const pool = toOptionalBoolean(typedReq.query.pool);
-  const flatlet = toOptionalBoolean(typedReq.query.flatlet);
-  const retirement = toOptionalBoolean(typedReq.query.retirement);
-  const onShow = toOptionalBoolean(typedReq.query.onShow);
-  const securityEstate = toOptionalBoolean(typedReq.query.securityEstate);
+export function buildPublicListingsWhere(query: PublicListingsRequestQuery): ListingWhere {
+  const q = query.q?.trim();
+  const propertyTypes = toPropertyTypes(query.propertyType);
+  const minPrice = toOptionalNumber(query.minPrice);
+  const maxPrice = toOptionalNumber(query.maxPrice);
+  const bedrooms = toParsedBedrooms(query.bedrooms);
+  const bathrooms = toOptionalNumber(query.bathrooms);
+  const parkingSpaces = toOptionalNumber(query.parkingSpaces);
+  const parkingType = query.parkingType?.trim();
+  const minLivingArea = toOptionalNumber(query.minLivingArea);
+  const maxLivingArea = toOptionalNumber(query.maxLivingArea);
+  const minLandSize = toOptionalNumber(query.minLandSize);
+  const maxLandSize = toOptionalNumber(query.maxLandSize);
+  const furnished = toOptionalBoolean(query.furnished);
+  const availableFrom = query.availableFrom ? new Date(query.availableFrom) : undefined;
+  const rentalTerm = query.rentalTerm?.trim();
+  const petFriendly = toOptionalBoolean(query.petFriendly);
+  const garden = toOptionalBoolean(query.garden);
+  const pool = toOptionalBoolean(query.pool);
+  const flatlet = toOptionalBoolean(query.flatlet);
+  const retirement = toOptionalBoolean(query.retirement);
+  const onShow = toOptionalBoolean(query.onShow);
+  const securityEstate = toOptionalBoolean(query.securityEstate);
 
   const where: ListingWhere = {
     status: 'active',
@@ -245,12 +269,42 @@ export const getPublicListings: RequestHandler = async (req, res) => {
     deleted_at: null
   };
 
+  const andFilters: ListingWhere[] = [];
+
   if (q) {
-    where.OR = [
-      { title: { contains: q, mode: 'insensitive' } },
-      { description: { contains: q, mode: 'insensitive' } },
-      { location: { contains: q, mode: 'insensitive' } }
-    ];
+    andFilters.push({
+      OR: [
+        { title: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+        { location: { contains: q, mode: 'insensitive' } }
+      ]
+    });
+  }
+
+  const locationFilters: ListingWhere[] = [];
+  const regionIds = toPositiveIntArray(query.region_id);
+  const cityIds = toPositiveIntArray(query.city_id);
+  const municipalityIds = toPositiveIntArray(query.municipality_id);
+  const neighborhoodIds = toPositiveIntArray(query.neighborhood_id);
+
+  if (regionIds.length > 0) {
+    locationFilters.push({ region_id: { in: regionIds } });
+  }
+
+  if (cityIds.length > 0) {
+    locationFilters.push({ city_id: { in: cityIds } });
+  }
+
+  if (municipalityIds.length > 0) {
+    locationFilters.push({ municipality_id: { in: municipalityIds } });
+  }
+
+  if (neighborhoodIds.length > 0) {
+    locationFilters.push({ neighborhood_id: { in: neighborhoodIds } });
+  }
+
+  if (locationFilters.length > 0) {
+    andFilters.push({ OR: locationFilters });
   }
 
   if (propertyTypes.length > 0) {
@@ -335,6 +389,19 @@ export const getPublicListings: RequestHandler = async (req, res) => {
   if (securityEstate !== undefined) {
     where.security_estate = securityEstate;
   }
+
+  if (andFilters.length > 0) {
+    where.AND = andFilters;
+  }
+
+  return where;
+}
+
+export const getPublicListings: RequestHandler = async (req, res) => {
+  const typedReq = req as Request<{}, {}, {}, PublicListingsRequestQuery>;
+  const currentPage = toPositiveInt(typedReq.query.page, 1);
+  const itemsPerPage = Math.min(toPositiveInt(typedReq.query.limit, 20), 100);
+  const where = buildPublicListingsWhere(typedReq.query);
 
   const orderBy = toSortBy(typedReq.query.sortBy);
 

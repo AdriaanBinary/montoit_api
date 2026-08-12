@@ -71,15 +71,19 @@ GET /api/autocomplete?q=<search_query>&limit=<limit>
 - `q` (required): Search query (minimum 2 characters)
 - `limit` (optional): Maximum results, default 8, max 50
 
-### Public active listings
+### Public listings
 ```
-GET /api/listings/active
+GET /api/listings/public
 ```
-Returns all listings where status is `active`. This endpoint does not require authentication.
+Returns all public listings where status is `active` and `is_published` is true. This endpoint does not require authentication.
 
 **Query parameters:**
 - `page` (optional): Page number, default `1`
 - `limit` (optional): Items per page, default `20`, max `100`
+- `region_id` (optional): Repeatable region IDs to filter by, for example `region_id=1&region_id=2`
+- `city_id` (optional): Repeatable city IDs to filter by
+- `municipality_id` (optional): Repeatable municipality IDs to filter by
+- `neighborhood_id` (optional): Repeatable neighborhood IDs to filter by
 
 **Response pagination format:**
 ```json

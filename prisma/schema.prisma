@@ -43,6 +43,7 @@ model Listing {
   description        String?           @db.Text
   location           String?           @db.Text
   property_type      String?           @db.VarChar(50)
+  listing_type       ListingType       @default(SALE)
   bedrooms           Int?
   bathrooms          Decimal?          @db.Decimal(3, 1)
   property_size      Decimal?          @db.Decimal(8, 2)
@@ -170,6 +171,13 @@ enum ListingOwnerType {
   AGENT
 
   @@map("listing_owner_type")
+}
+
+enum ListingType {
+  SALE
+  RENT
+
+  @@map("listing_type")
 }
 
 enum ListingStatus {

@@ -10,6 +10,7 @@ interface ListingCreateInput {
   title?: string;
   description?: string;
   property_type?: string;
+  listing_type?: 'sale' | 'rent';
   bedrooms?: number;
   bathrooms?: number;
   property_size?: number;
@@ -55,6 +56,7 @@ interface UpdateListingRequestBody {
   description?: string;
   location?: string;
   property_type?: string;
+  listing_type?: 'sale' | 'rent';
   bedrooms?: number;
   bathrooms?: number;
   property_size?: number;
@@ -178,8 +180,23 @@ function normalizeListingStatus(status?: string): 'draft' | 'active' | 'archived
   return 'draft';
 }
 
+export function validatePublishRequirements(confirmedImageCount: number): { valid: boolean; message?: string } {
+  if (confirmedImageCount < 5) {
+    return {
+      valid: false,
+      message: 'A listing must have at least 5 confirmed images before it can be published.'
+    };
+  }
+
+  return {
+    valid: true,
+    message: undefined
+  };
+}
+
 export function normalizeCreateListingInput(input: Partial<ListingCreateInput>, userId: string) {
   const normalizedStatus = normalizeListingStatus(input.status);
+  const normalizedListingType = input.listing_type === 'rent' ? 'rent' : 'sale';
   const features = Array.isArray(input.features) ? input.features : [];
   const other = Array.isArray(input.other) ? input.other : [];
 
@@ -188,6 +205,7 @@ export function normalizeCreateListingInput(input: Partial<ListingCreateInput>, 
     title: input.title ?? null,
     description: input.description ?? null,
     property_type: input.property_type ?? null,
+    listing_type: normalizedListingType,
     bedrooms: input.bedrooms ?? null,
     bathrooms: input.bathrooms ?? null,
     property_size: input.property_size ?? null,
@@ -256,6 +274,23 @@ export const publishListing: RequestHandler = async (req, res) => {
   }
 
   try {
+    const listing = await listingsDb.getOwnedListingById(listingId, userId);
+
+    if (!listing) {
+      return res.status(404).json({ success: false, error: 'Listing not found' });
+    }
+
+    const confirmedImages = await listingsDb.getListingImages(listingId);
+    const publishValidation = validatePublishRequirements(confirmedImages.length);
+
+    if (!publishValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: 'Minimum image requirement not met',
+        message: publishValidation.message
+      });
+    }
+
     const updatedListing = await listingsDb.publishListing(listingId, userId);
 
     if (!updatedListing) {

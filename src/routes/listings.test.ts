@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildListingImageObjectKey, normalizeCreateListingInput } from '../services/listingsService.js';
+import { buildPublicListingsWhere } from '../services/publicListingsService.js';
+import { publicListingsQuerySchema } from './listings.js';
 
 test('defaults new listings to draft and unpublished when not provided', () => {
   const payload = normalizeCreateListingInput({ title: 'Cozy apartment' }, 'u_test');
@@ -8,7 +10,7 @@ test('defaults new listings to draft and unpublished when not provided', () => {
   assert.equal(payload.user_id, 'u_test');
   assert.equal(payload.status, 'draft');
   assert.equal(payload.is_published, false);
-  assert.equal(payload.currency, 'USD');
+  assert.equal(payload.currency, 'XAF');
   assert.deepEqual(payload.features, []);
   assert.deepEqual(payload.other, []);
 });
@@ -41,4 +43,31 @@ test('builds a deterministic listing image object key', () => {
 
   assert.match(key, /^listings\/42\//);
   assert.match(key, /-2-Front-View\.jpg$/);
+});
+
+test('builds public listing filters with repeated location ids', () => {
+  const where = buildPublicListingsWhere({
+    region_id: [1, 2],
+    city_id: [3],
+    municipality_id: [6, 7],
+    neighborhood_id: [11],
+    sortBy: 'date_desc'
+  });
+
+  assert.deepEqual(where.AND, [
+    {
+      OR: [
+        { region_id: { in: [1, 2] } },
+        { city_id: { in: [3] } },
+        { municipality_id: { in: [6, 7] } },
+        { neighborhood_id: { in: [11] } }
+      ]
+    }
+  ]);
+});
+
+test('rejects invalid location ids in the public listings query schema', () => {
+  const parsed = publicListingsQuerySchema.safeParse({ region_id: ['1', 'bad-value'] });
+
+  assert.equal(parsed.success, false);
 });

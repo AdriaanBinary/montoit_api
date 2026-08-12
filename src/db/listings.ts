@@ -43,6 +43,14 @@ function asListingStatus(value: unknown): 'draft' | 'active' | 'archived' | 'sol
   return 'draft';
 }
 
+function asListingType(value: unknown): 'sale' | 'rent' {
+  if (value === 'rent') {
+    return 'rent';
+  }
+
+  return 'sale';
+}
+
 function toRecord(value: unknown): Record<string, unknown> {
   return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
 }
@@ -77,6 +85,7 @@ const listingsDb = {
         title: asString(payload.title),
         description: asString(payload.description),
         property_type: asString(payload.property_type),
+        listing_type: asListingType(payload.listing_type),
         bedrooms: asInteger(payload.bedrooms),
         bathrooms: asNumber(payload.bathrooms),
         property_size: asNumber(payload.property_size),
@@ -184,6 +193,7 @@ const listingsDb = {
     if (payload.description !== undefined) data.description = typeof payload.description === 'string' ? payload.description : null;
     if (payload.location !== undefined) data.location = typeof payload.location === 'string' ? payload.location : null;
     if (payload.property_type !== undefined) data.property_type = typeof payload.property_type === 'string' ? payload.property_type : null;
+    if (payload.listing_type !== undefined) data.listing_type = asListingType(payload.listing_type);
     if (payload.bedrooms !== undefined) data.bedrooms = asInteger(payload.bedrooms);
     if (payload.bathrooms !== undefined) data.bathrooms = asNumber(payload.bathrooms);
     if (payload.property_size !== undefined) data.property_size = asNumber(payload.property_size);
