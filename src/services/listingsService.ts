@@ -3,6 +3,13 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Request, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import listingsDb from '../db/listings.js';
+import {
+  addListingOptions,
+  groupListingOptions,
+  ListingOptionValidationError,
+  replaceListingOptionSelections,
+  validateListingOptionIds
+} from '../db/listingOptions.js';
 import { LocationValidationError, validateListingLocationIds } from '../db/locations.js';
 import { AuthenticatedRequest } from '../utils/authMiddleware.js';
 
@@ -18,6 +25,7 @@ interface ListingCreateInput {
   currency?: string;
   features?: string[];
   other?: string[];
+  option_ids?: number[];
   status?: 'draft' | 'active' | 'archived' | 'sold';
   sold?: boolean;
   region_id?: number;
@@ -78,6 +86,7 @@ interface UpdateListingRequestBody {
   currency?: string;
   features?: string[];
   other?: string[];
+  option_ids?: number[];
   status?: 'draft' | 'active' | 'archived' | 'sold';
   sold?: boolean;
   region_id?: number;
@@ -199,6 +208,7 @@ export function normalizeCreateListingInput(input: Partial<ListingCreateInput>, 
   const normalizedListingType = input.listing_type === 'rent' ? 'rent' : 'sale';
   const features = Array.isArray(input.features) ? input.features : [];
   const other = Array.isArray(input.other) ? input.other : [];
+  const option_ids = Array.isArray(input.option_ids) ? [...new Set(input.option_ids)] : [];
 
   return {
     user_id: userId,
@@ -213,6 +223,7 @@ export function normalizeCreateListingInput(input: Partial<ListingCreateInput>, 
     currency: input.currency ?? 'XAF',
     features,
     other,
+    option_ids,
     status: normalizedStatus,
     sold: Boolean(input.sold ?? false),
     region_id: input.region_id ?? null,
@@ -233,6 +244,7 @@ export const createListing: RequestHandler = async (req, res) => {
 
   try {
     const payload = normalizeCreateListingInput(req.body as Partial<ListingCreateInput>, userId);
+    await validateListingOptionIds(payload.option_ids);
     await validateListingLocationIds({
       region_id: payload.region_id,
       city_id: payload.city_id,
@@ -241,14 +253,24 @@ export const createListing: RequestHandler = async (req, res) => {
     });
 
     const createdListing = await listingsDb.createListing(payload as Record<string, unknown>);
+    await replaceListingOptionSelections(Number(createdListing.id), payload.option_ids);
 
-    return res.status(201).json({ success: true, listing: createdListing });
+    return res.status(201).json({ success: true, listing: await addListingOptions(createdListing) });
   } catch (error: unknown) {
     if (error instanceof LocationValidationError) {
       return res.status(400).json({
         success: false,
         error: 'Invalid request body',
         message: error.message
+      });
+    }
+
+    if (error instanceof ListingOptionValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid listing options',
+        message: error.message,
+        option_ids: error.optionIds
       });
     }
 
@@ -297,7 +319,7 @@ export const publishListing: RequestHandler = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Listing not found' });
     }
 
-    return res.json({ success: true, listing: updatedListing });
+    return res.json({ success: true, listing: await addListingOptions(updatedListing) });
   } catch (error: unknown) {
     console.error('Publish listing error:', error);
     return res.status(500).json({
@@ -466,7 +488,7 @@ export const getListingById: RequestHandler = async (req, res) => {
       });
     }
 
-    return res.json({ success: true, listing: { ...listing, images } });
+    return res.json({ success: true, listing: { ...(await addListingOptions(listing)), images } });
   } catch (error: unknown) {
     console.error('Get listing error:', error);
     return res.status(500).json({
@@ -511,7 +533,7 @@ export const getPublicListingById: RequestHandler = async (req, res) => {
       });
     }
 
-    return res.json({ success: true, listing: { ...listing, images } });
+    return res.json({ success: true, listing: { ...(await addListingOptions(listing)), images } });
   } catch (error: unknown) {
     console.error('Get public listing error:', error);
     return res.status(500).json({
@@ -614,13 +636,21 @@ export const updateListing: RequestHandler = async (req, res) => {
       neighborhood_id: body.neighborhood_id
     });
 
+    if (body.option_ids !== undefined) {
+      await validateListingOptionIds(body.option_ids);
+    }
+
     const updatedListing = await listingsDb.updateOwnedListing(listingId, userId, body as Record<string, unknown>);
 
     if (!updatedListing) {
       return res.status(404).json({ success: false, error: 'Listing not found' });
     }
 
-    return res.json({ success: true, listing: updatedListing });
+    if (body.option_ids !== undefined) {
+      await replaceListingOptionSelections(listingId, body.option_ids);
+    }
+
+    return res.json({ success: true, listing: await addListingOptions(updatedListing) });
   } catch (error: unknown) {
     if (error instanceof LocationValidationError) {
       return res.status(400).json({
@@ -630,10 +660,32 @@ export const updateListing: RequestHandler = async (req, res) => {
       });
     }
 
+    if (error instanceof ListingOptionValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid listing options',
+        message: error.message,
+        option_ids: error.optionIds
+      });
+    }
+
     console.error('Update listing error:', error);
     return res.status(500).json({
       success: false,
       error: 'Failed to update listing',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+export const getListingOptions: RequestHandler = async (_req, res) => {
+  try {
+    return res.json({ success: true, ...(await groupListingOptions()) });
+  } catch (error: unknown) {
+    console.error('Get listing options error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to fetch listing options',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
@@ -672,7 +724,7 @@ export const deleteListing: RequestHandler = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Listing not found' });
     }
 
-    return res.json({ success: true, listing: archivedListing });
+    return res.json({ success: true, listing: await addListingOptions(archivedListing) });
   } catch (error: unknown) {
     console.error('Delete listing error:', error);
     return res.status(500).json({
@@ -702,7 +754,8 @@ export const getPrivateListings: RequestHandler = async (req, res) => {
     const safePage = Math.min(currentPage, pages);
     const safeOffset = (safePage - 1) * itemsPerPage;
 
-    const listings = await listingsDb.getPrivateListings(userId, itemsPerPage, safeOffset);
+    const privateListings = await listingsDb.getPrivateListings(userId, itemsPerPage, safeOffset);
+    const listings = await Promise.all(privateListings.map((listing) => addListingOptions(listing)));
 
     return res.json({
       success: true,

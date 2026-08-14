@@ -81,8 +81,36 @@ model Listing {
 
   enquiries          ListingEnquiry[]
   favorites          UserFavorite[]
+  optionSelections   ListingOptionSelection[]
 
   @@map("listings")
+}
+
+model ListingOption {
+  id          Int                 @id @default(autoincrement())
+  name        String              @unique @db.VarChar(160)
+  type        ListingOptionType
+  is_active   Boolean             @default(true)
+  created_at  DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime            @default(now()) @db.Timestamptz(6)
+
+  selections  ListingOptionSelection[]
+
+  @@map("listing_options")
+}
+
+model ListingOptionSelection {
+  id          Int          @id @default(autoincrement())
+  listing_id  Int
+  option_id   Int
+  created_at  DateTime     @default(now()) @db.Timestamptz(6)
+
+  listing     Listing      @relation(fields: [listing_id], references: [id], onDelete: Cascade)
+  option      ListingOption @relation(fields: [option_id], references: [id], onDelete: Cascade)
+
+  @@unique([listing_id, option_id], map: "unique_listing_option_selection")
+  @@index([option_id])
+  @@map("listing_option_selections")
 }
 
 model ListingImage {
@@ -178,6 +206,11 @@ enum ListingType {
   RENT
 
   @@map("listing_type")
+}
+
+enum ListingOptionType {
+  AMENITY
+  SECURITY_OPTION
 }
 
 enum ListingStatus {

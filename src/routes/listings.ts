@@ -7,6 +7,7 @@ import {
   deleteListing,
   getListingById,
   getPublicListingById,
+  getListingOptions,
   getPrivateListings,
   publishListing,
   updateListing,
@@ -150,6 +151,7 @@ const listingUpdateBodySchema = z
     currency: z.literal('XAF').optional(),
     features: z.array(z.string()).optional(),
     other: z.array(z.string()).optional(),
+    option_ids: z.array(z.coerce.number().int().positive()).optional(),
     status: z.enum(['draft', 'active', 'archived', 'sold']).optional(),
     sold: z.boolean().optional(),
     region_id: z.coerce.number().int().positive().optional(),
@@ -175,6 +177,7 @@ const createListingBodySchema = z.object({
   currency: z.literal('XAF').optional(),
   features: z.array(z.string()).optional(),
   other: z.array(z.string()).optional(),
+  option_ids: z.array(z.coerce.number().int().positive()).optional(),
   status: z.enum(['draft', 'active', 'archived', 'sold']).optional(),
   sold: z.boolean().optional(),
   region_id: z.coerce.number().int().positive().optional(),
@@ -231,6 +234,18 @@ const listingCreateResponseSchema = z.object({
   listing: listingResultSchema
 });
 
+const listingOptionSchema = z.object({
+  id: z.number().int().positive(),
+  name: z.string(),
+  type: z.enum(['AMENITY', 'SECURITY_OPTION'])
+});
+
+const listingOptionsResponseSchema = z.object({
+  success: z.literal(true),
+  amenities: z.array(listingOptionSchema),
+  security_options: z.array(listingOptionSchema)
+});
+
 const listingEnquiryResponseSchema = z.object({
   success: z.literal(true),
   enquiry: z.record(z.string(), z.unknown())
@@ -246,6 +261,17 @@ const uploadListingImagesResponseSchema = z.object({
 const confirmListingImageResponseSchema = z.object({
   success: z.literal(true),
   image: listingResultSchema
+});
+
+registerApiRoute({
+  method: 'get',
+  path: '/api/listings/options',
+  summary: 'Get available listing amenities and security options',
+  tags: ['Listings'],
+  responses: {
+    200: { description: 'Available listing options returned', schema: listingOptionsResponseSchema },
+    500: { description: 'Failed to fetch listing options', schema: genericErrorResponseSchema }
+  }
 });
 
 registerApiRoute({
@@ -457,6 +483,7 @@ router.get('/listings/public', (req, res, next) => {
 
   return getPublicListings(req, res, next);
 });
+router.get('/listings/options', (req, res, next) => getListingOptions(req, res, next));
 router.get('/listings/public/:id', (req, res, next) => {
   const parsedParams = listingIdParamsSchema.safeParse(req.params);
 

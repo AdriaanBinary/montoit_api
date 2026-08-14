@@ -43,3 +43,11 @@ test('normalizes the listing type to sale or rent', () => {
   assert.equal(normalizeCreateListingInput({ listing_type: 'rent' }, 'u-123').listing_type, 'rent');
   assert.equal(normalizeCreateListingInput({}, 'u-123').listing_type, 'sale');
 });
+
+test('normalizes listing option ids and removes duplicates', () => {
+  assert.deepEqual(
+    normalizeCreateListingInput({ option_ids: [3, 3, 7] }, 'u-123').option_ids,
+    [3, 7]
+  );
+  assert.deepEqual(normalizeCreateListingInput({}, 'u-123').option_ids, []);
+});

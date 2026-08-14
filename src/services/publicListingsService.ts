@@ -2,6 +2,7 @@ import { Request, RequestHandler } from 'express';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import listingsDb from '../db/listings.js';
+import { addListingOptions } from '../db/listingOptions.js';
 
 interface PublicListingsRequestQuery {
   page?: string | number;
@@ -412,7 +413,8 @@ export const getPublicListings: RequestHandler = async (req, res) => {
     const safeOffset = (safePage - 1) * itemsPerPage;
 
     const listings = await listingsDb.getPublicListings(itemsPerPage, safeOffset, where, orderBy);
-    const hydratedListings = await attachPublicImageUrls(listings);
+    const listingsWithOptions = await Promise.all(listings.map((listing) => addListingOptions(listing)));
+    const hydratedListings = await attachPublicImageUrls(listingsWithOptions);
 
     return res.json({
       success: true,
