@@ -2,9 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   filterConfirmedImages,
+  isAgentRole,
   normalizeCreateListingInput,
+  requiresAgentForPropertyType,
   validatePublishRequirements
 } from './listingsService.js';
+
+test('requires an agent only for commercial listings', () => {
+  assert.equal(isAgentRole('AGENT'), true);
+  assert.equal(isAgentRole('PRIVATE'), false);
+  assert.equal(isAgentRole(undefined), false);
+  assert.equal(requiresAgentForPropertyType('Commercial'), true);
+  assert.equal(requiresAgentForPropertyType('House'), false);
+  assert.equal(requiresAgentForPropertyType('Apartment / Flat'), false);
+  assert.equal(requiresAgentForPropertyType(undefined), false);
+});
 
 test('only keeps images that have been confirmed', () => {
   const images = [
@@ -50,4 +62,17 @@ test('normalizes listing option ids and removes duplicates', () => {
     [3, 7]
   );
   assert.deepEqual(normalizeCreateListingInput({}, 'u-123').option_ids, []);
+});
+
+test('preserves selected general fees and custom fees when normalizing a listing', () => {
+  const payload = normalizeCreateListingInput(
+    {
+      general_fees: [{ fee_id: 2, amount: 12500 }],
+      other_general_fees: [{ description: 'Generator contribution', amount: 5000 }]
+    },
+    'u-123'
+  );
+
+  assert.deepEqual(payload.general_fees, [{ fee_id: 2, amount: 12500 }]);
+  assert.deepEqual(payload.other_general_fees, [{ description: 'Generator contribution', amount: 5000 }]);
 });

@@ -71,3 +71,47 @@ test('rejects invalid location ids in the public listings query schema', () => {
 
   assert.equal(parsed.success, false);
 });
+
+test('builds an any-match filter for listing option ids', () => {
+  const where = buildPublicListingsWhere({
+    optionIds: [1, 2, 2],
+    sortBy: 'date_desc'
+  });
+
+  assert.deepEqual(where.AND, [
+    {
+      optionSelections: {
+        some: { option_id: { in: [1, 2] } }
+      }
+    }
+  ]);
+});
+
+test('builds an all-match filter for listing option ids', () => {
+  const where = buildPublicListingsWhere({
+    optionIds: [1, 2],
+    optionMatch: 'all',
+    sortBy: 'date_desc'
+  });
+
+  assert.deepEqual(where.AND, [
+    { optionSelections: { some: { option_id: 1 } } },
+    { optionSelections: { some: { option_id: 2 } } }
+  ]);
+});
+
+test('parses option ids and defaults option matching to any', () => {
+  const parsed = publicListingsQuerySchema.safeParse({ optionIds: ['1', '2'] });
+
+  assert.equal(parsed.success, true);
+  if (parsed.success) {
+    assert.deepEqual(parsed.data.optionIds, [1, 2]);
+    assert.equal(parsed.data.optionMatch, 'any');
+  }
+});
+
+test('rejects unsupported option matching modes', () => {
+  const parsed = publicListingsQuerySchema.safeParse({ optionMatch: 'none' });
+
+  assert.equal(parsed.success, false);
+});

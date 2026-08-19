@@ -84,6 +84,26 @@ Returns all public listings where status is `active` and `is_published` is true.
 - `city_id` (optional): Repeatable city IDs to filter by
 - `municipality_id` (optional): Repeatable municipality IDs to filter by
 - `neighborhood_id` (optional): Repeatable neighborhood IDs to filter by
+- `optionIds` (optional): Repeatable normalized Amenity or Security Option IDs
+- `optionMatch` (optional): `any` (default) or `all`; controls how multiple `optionIds` are matched
+
+Option filtering examples:
+
+```text
+# Match listings with at least one of options 1 or 2
+GET /api/listings/public?optionIds=1&optionIds=2
+
+# Match listings with both options 1 and 2
+GET /api/listings/public?optionIds=1&optionIds=2&optionMatch=all
+```
+
+Option filtering is combined with other filters. For example, this finds active public listings in a price range with at least one requested option:
+
+```text
+GET /api/listings/public?minPrice=100000&maxPrice=500000&optionIds=1&optionIds=2
+```
+
+Unknown or inactive option IDs return no matching listings. They do not cause a `400` response.
 
 **Response pagination format:**
 ```json
@@ -101,6 +121,84 @@ Returns all public listings where status is `active` and `is_published` is true.
 GET /api/autocomplete?q=Buea
 GET /api/autocomplete?q=Yaounde&limit=10
 ```
+
+### Listing Amenities and Security Options
+
+The frontend should load the available normalized listing options before rendering the listing form:
+
+```
+GET /api/listings/options
+```
+
+This endpoint is public and returns active options grouped by category:
+
+```json
+{
+  "success": true,
+  "amenities": [
+    {
+      "id": 1,
+      "name": "Built-in cupboards",
+      "type": "AMENITY"
+    }
+  ],
+  "security_options": [
+    {
+      "id": 2,
+      "name": "24-hour security",
+      "type": "SECURITY_OPTION"
+    }
+  ]
+}
+```
+
+Use the option `id` values when creating or updating a listing. Both endpoints require authentication:
+
+```
+POST /api/listings
+PUT /api/listings/:id
+Authorization: Bearer <token>
+```
+
+Example request body:
+
+```json
+{
+  "title": "Modern apartment",
+  "amount": 250000,
+  "option_ids": [1, 2]
+}
+```
+
+`option_ids` is an array of positive integers. The API removes duplicate IDs and rejects IDs that do not exist or are inactive.
+
+For `PUT /api/listings/:id`:
+
+- Omit `option_ids` to leave the current normalized selections unchanged.
+- Send `option_ids: []` to clear all normalized selections.
+- Send a populated array to replace the complete normalized selection.
+
+Listing responses include the selected normalized options in both ID and expanded forms:
+
+```json
+{
+  "option_ids": [1, 2],
+  "options": [
+    {
+      "id": 1,
+      "name": "Built-in cupboards",
+      "type": "AMENITY"
+    },
+    {
+      "id": 2,
+      "name": "24-hour security",
+      "type": "SECURITY_OPTION"
+    }
+  ]
+}
+```
+
+The existing `features` and `other` arrays remain available for backward compatibility. New frontend selections should use `option_ids`.
 
 **Response:**
 ```json

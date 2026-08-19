@@ -42,7 +42,7 @@ model Listing {
   title              String?           @db.Text
   description        String?           @db.Text
   location           String?           @db.Text
-  property_type      String?           @db.VarChar(50)
+  property_type      PropertyType?
   listing_type       ListingType       @default(SALE)
   bedrooms           Int?
   bathrooms          Decimal?          @db.Decimal(3, 1)
@@ -82,6 +82,8 @@ model Listing {
   enquiries          ListingEnquiry[]
   favorites          UserFavorite[]
   optionSelections   ListingOptionSelection[]
+  generalFeeSelections ListingGeneralFeeSelection[]
+  otherGeneralFees    ListingOtherGeneralFee[]
 
   @@map("listings")
 }
@@ -111,6 +113,48 @@ model ListingOptionSelection {
   @@unique([listing_id, option_id], map: "unique_listing_option_selection")
   @@index([option_id])
   @@map("listing_option_selections")
+}
+
+model GeneralFee {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(160)
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  selections ListingGeneralFeeSelection[]
+
+  @@map("general_fees")
+}
+
+model ListingGeneralFeeSelection {
+  id          Int       @id @default(autoincrement())
+  listing_id  Int
+  fee_id      Int
+  amount      Decimal   @db.Decimal(12, 2)
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime  @default(now()) @db.Timestamptz(6)
+
+  listing Listing   @relation(fields: [listing_id], references: [id], onDelete: Cascade)
+  fee     GeneralFee @relation(fields: [fee_id], references: [id], onDelete: Cascade)
+
+  @@unique([listing_id, fee_id], map: "unique_listing_general_fee_selection")
+  @@index([fee_id])
+  @@map("listing_general_fee_selections")
+}
+
+model ListingOtherGeneralFee {
+  id          Int       @id @default(autoincrement())
+  listing_id  Int
+  description String    @db.VarChar(255)
+  amount      Decimal   @db.Decimal(12, 2)
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime  @default(now()) @db.Timestamptz(6)
+
+  listing Listing @relation(fields: [listing_id], references: [id], onDelete: Cascade)
+
+  @@index([listing_id])
+  @@map("listing_other_general_fees")
 }
 
 model ListingImage {
@@ -206,6 +250,15 @@ enum ListingType {
   RENT
 
   @@map("listing_type")
+}
+
+enum PropertyType {
+  HOUSE          @map("House")
+  APARTMENT_FLAT @map("Apartment / Flat")
+  VILLA          @map("Villa")
+  COMMERCIAL     @map("Commercial")
+  INDUSTRIAL     @map("Industrial")
+  VACANT_LAND    @map("Vacant Land")
 }
 
 enum ListingOptionType {

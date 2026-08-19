@@ -3,6 +3,7 @@ import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import listingsDb from '../db/listings.js';
 import { addListingOptions } from '../db/listingOptions.js';
+import { addListingGeneralFees } from '../db/generalFees.js';
 
 interface PublicListingsRequestQuery {
   page?: string | number;
@@ -29,6 +30,8 @@ interface PublicListingsRequestQuery {
   retirement?: string | boolean;
   onShow?: string | boolean;
   securityEstate?: string | boolean;
+  optionIds?: string[] | string | number[] | number;
+  optionMatch?: 'any' | 'all';
   region_id?: string[] | string | number[] | number;
   city_id?: string[] | string | number[] | number;
   municipality_id?: string[] | string | number[] | number;
@@ -204,6 +207,25 @@ function toPropertyTypes(value: unknown): string[] {
   return [];
 }
 
+function toStoredPropertyType(value: string): string {
+  switch (value) {
+    case 'House':
+      return 'HOUSE';
+    case 'Apartment / Flat':
+      return 'APARTMENT_FLAT';
+    case 'Villa':
+      return 'VILLA';
+    case 'Commercial':
+      return 'COMMERCIAL';
+    case 'Industrial':
+      return 'INDUSTRIAL';
+    case 'Vacant Land':
+      return 'VACANT_LAND';
+    default:
+      return value;
+  }
+}
+
 function toParsedBedrooms(value: unknown): ParsedBedrooms {
   if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
     return { exact: value };
@@ -263,6 +285,8 @@ export function buildPublicListingsWhere(query: PublicListingsRequestQuery): Lis
   const retirement = toOptionalBoolean(query.retirement);
   const onShow = toOptionalBoolean(query.onShow);
   const securityEstate = toOptionalBoolean(query.securityEstate);
+  const optionIds = toPositiveIntArray(query.optionIds);
+  const optionMatch = query.optionMatch ?? 'any';
 
   const where: ListingWhere = {
     status: 'active',
@@ -309,7 +333,7 @@ export function buildPublicListingsWhere(query: PublicListingsRequestQuery): Lis
   }
 
   if (propertyTypes.length > 0) {
-    where.property_type = { in: propertyTypes };
+    where.property_type = { in: propertyTypes.map(toStoredPropertyType) };
   }
 
   if (minPrice !== undefined || maxPrice !== undefined) {
@@ -391,6 +415,24 @@ export function buildPublicListingsWhere(query: PublicListingsRequestQuery): Lis
     where.security_estate = securityEstate;
   }
 
+  if (optionIds.length > 0) {
+    if (optionMatch === 'all') {
+      for (const optionId of optionIds) {
+        andFilters.push({
+          optionSelections: {
+            some: { option_id: optionId }
+          }
+        });
+      }
+    } else {
+      andFilters.push({
+        optionSelections: {
+          some: { option_id: { in: optionIds } }
+        }
+      });
+    }
+  }
+
   if (andFilters.length > 0) {
     where.AND = andFilters;
   }
@@ -413,7 +455,9 @@ export const getPublicListings: RequestHandler = async (req, res) => {
     const safeOffset = (safePage - 1) * itemsPerPage;
 
     const listings = await listingsDb.getPublicListings(itemsPerPage, safeOffset, where, orderBy);
-    const listingsWithOptions = await Promise.all(listings.map((listing) => addListingOptions(listing)));
+    const listingsWithOptions = await Promise.all(
+      listings.map(async (listing) => addListingGeneralFees(await addListingOptions(listing)))
+    );
     const hydratedListings = await attachPublicImageUrls(listingsWithOptions);
 
     return res.json({

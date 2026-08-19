@@ -57,7 +57,7 @@ const propertyTypeQueryParam = z
       .filter((entry) => entry.length > 0);
 
     return normalized.length > 0 ? normalized : undefined;
-  }, z.array(z.string().min(1)).nonempty())
+  }, z.array(z.enum(['House', 'Apartment / Flat', 'Villa', 'Commercial', 'Industrial', 'Vacant Land'])).nonempty())
   .optional();
 
 const multiValuePositiveIntQueryParam = z
@@ -95,6 +95,8 @@ export const publicListingsQuerySchema = z.object({
   retirement: optionalBooleanQueryParam,
   onShow: optionalBooleanQueryParam,
   securityEstate: optionalBooleanQueryParam,
+  optionIds: multiValuePositiveIntQueryParam,
+  optionMatch: z.enum(['any', 'all']).default('any'),
   region_id: multiValuePositiveIntQueryParam,
   city_id: multiValuePositiveIntQueryParam,
   municipality_id: multiValuePositiveIntQueryParam,
@@ -123,12 +125,22 @@ const listingEnquiryBodySchema = z.object({
   message: z.string().trim().min(1)
 });
 
+const generalFeeSelectionSchema = z.object({
+  fee_id: z.coerce.number().int().positive(),
+  amount: z.coerce.number().finite().nonnegative()
+});
+
+const otherGeneralFeeSchema = z.object({
+  description: z.string().trim().min(1).max(255),
+  amount: z.coerce.number().finite().nonnegative()
+});
+
 const listingUpdateBodySchema = z
   .object({
     title: z.string().optional(),
     description: z.string().optional(),
     location: z.string().optional(),
-    property_type: z.string().optional(),
+    property_type: z.enum(['House', 'Apartment / Flat', 'Villa', 'Commercial', 'Industrial', 'Vacant Land']).optional(),
     listing_type: z.enum(['sale', 'rent']).optional(),
     bedrooms: z.coerce.number().optional(),
     bathrooms: z.coerce.number().optional(),
@@ -152,6 +164,8 @@ const listingUpdateBodySchema = z
     features: z.array(z.string()).optional(),
     other: z.array(z.string()).optional(),
     option_ids: z.array(z.coerce.number().int().positive()).optional(),
+    general_fees: z.array(generalFeeSelectionSchema).optional(),
+    other_general_fees: z.array(otherGeneralFeeSchema).optional(),
     status: z.enum(['draft', 'active', 'archived', 'sold']).optional(),
     sold: z.boolean().optional(),
     region_id: z.coerce.number().int().positive().optional(),
@@ -168,7 +182,7 @@ const listingUpdateBodySchema = z
 const createListingBodySchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
-  property_type: z.string().optional(),
+  property_type: z.enum(['House', 'Apartment / Flat', 'Villa', 'Commercial', 'Industrial', 'Vacant Land']).optional(),
   listing_type: z.enum(['sale', 'rent']).optional(),
   bedrooms: z.coerce.number().optional(),
   bathrooms: z.coerce.number().optional(),
@@ -178,6 +192,8 @@ const createListingBodySchema = z.object({
   features: z.array(z.string()).optional(),
   other: z.array(z.string()).optional(),
   option_ids: z.array(z.coerce.number().int().positive()).optional(),
+  general_fees: z.array(generalFeeSelectionSchema).optional(),
+  other_general_fees: z.array(otherGeneralFeeSchema).optional(),
   status: z.enum(['draft', 'active', 'archived', 'sold']).optional(),
   sold: z.boolean().optional(),
   region_id: z.coerce.number().int().positive().optional(),
@@ -243,7 +259,8 @@ const listingOptionSchema = z.object({
 const listingOptionsResponseSchema = z.object({
   success: z.literal(true),
   amenities: z.array(listingOptionSchema),
-  security_options: z.array(listingOptionSchema)
+  security_options: z.array(listingOptionSchema),
+  general_fees: z.array(z.object({ id: z.number().int().positive(), name: z.string() }))
 });
 
 const listingEnquiryResponseSchema = z.object({
@@ -352,6 +369,7 @@ registerApiRoute({
   responses: {
     201: { description: 'Listing created', schema: listingCreateResponseSchema },
     401: { description: 'Unauthorized', schema: simpleErrorResponseSchema },
+    403: { description: 'Only agents can create commercial property listings', schema: genericErrorResponseSchema },
     500: { description: 'Failed to create listing', schema: genericErrorResponseSchema }
   }
 });

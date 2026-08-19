@@ -51,6 +51,32 @@ function asListingType(value: unknown): 'SALE' | 'RENT' {
   return 'SALE';
 }
 
+function asPropertyType(value: unknown):
+  | 'HOUSE'
+  | 'APARTMENT_FLAT'
+  | 'VILLA'
+  | 'COMMERCIAL'
+  | 'INDUSTRIAL'
+  | 'VACANT_LAND'
+  | null {
+  switch (value) {
+    case 'House':
+      return 'HOUSE';
+    case 'Apartment / Flat':
+      return 'APARTMENT_FLAT';
+    case 'Villa':
+      return 'VILLA';
+    case 'Commercial':
+      return 'COMMERCIAL';
+    case 'Industrial':
+      return 'INDUSTRIAL';
+    case 'Vacant Land':
+      return 'VACANT_LAND';
+    default:
+      return null;
+  }
+}
+
 function toRecord(value: unknown): Record<string, unknown> {
   return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
 }
@@ -84,7 +110,7 @@ const listingsDb = {
         user_id: String(payload.user_id),
         title: asString(payload.title),
         description: asString(payload.description),
-        property_type: asString(payload.property_type),
+        property_type: asPropertyType(payload.property_type),
         listing_type: asListingType(payload.listing_type),
         bedrooms: asInteger(payload.bedrooms),
         bathrooms: asNumber(payload.bathrooms),
@@ -192,7 +218,7 @@ const listingsDb = {
     if (payload.title !== undefined) data.title = typeof payload.title === 'string' ? payload.title : null;
     if (payload.description !== undefined) data.description = typeof payload.description === 'string' ? payload.description : null;
     if (payload.location !== undefined) data.location = typeof payload.location === 'string' ? payload.location : null;
-    if (payload.property_type !== undefined) data.property_type = typeof payload.property_type === 'string' ? payload.property_type : null;
+    if (payload.property_type !== undefined) data.property_type = asPropertyType(payload.property_type);
     if (payload.listing_type !== undefined) data.listing_type = asListingType(payload.listing_type);
     if (payload.bedrooms !== undefined) data.bedrooms = asInteger(payload.bedrooms);
     if (payload.bathrooms !== undefined) data.bathrooms = asNumber(payload.bathrooms);

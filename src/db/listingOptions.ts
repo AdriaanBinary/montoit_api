@@ -1,4 +1,5 @@
 import prisma from './prisma.js';
+import { getAvailableGeneralFees } from './generalFees.js';
 
 export type ListingOptionType = 'AMENITY' | 'SECURITY_OPTION';
 
@@ -100,11 +101,14 @@ export async function addListingOptions<T extends Record<string, unknown>>(listi
 export async function groupListingOptions(): Promise<{
   amenities: ListingOptionRecord[];
   security_options: ListingOptionRecord[];
+  general_fees: { id: number; name: string }[];
 }> {
   const options = await getAvailableListingOptions();
+  const generalFees = await getAvailableGeneralFees();
 
   return {
     amenities: options.filter((option) => option.type === 'AMENITY'),
-    security_options: options.filter((option) => option.type === 'SECURITY_OPTION')
+    security_options: options.filter((option) => option.type === 'SECURITY_OPTION'),
+    general_fees: generalFees
   };
 }

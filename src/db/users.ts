@@ -9,6 +9,15 @@ function toRecords(values: unknown[]): Record<string, unknown>[] {
 }
 
 const usersDb = {
+  getUserRole: async function(userId: string): Promise<string | null> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true }
+    });
+
+    return user?.role ?? null;
+  },
+
   ensureUserFavoritesTable: async function(): Promise<void> {
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS user_favorites (

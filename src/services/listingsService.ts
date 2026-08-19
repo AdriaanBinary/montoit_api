@@ -4,6 +4,15 @@ import { Request, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import listingsDb from '../db/listings.js';
 import {
+  addListingGeneralFees,
+  getListingGeneralFees,
+  GeneralFeeInput,
+  GeneralFeeValidationError,
+  OtherGeneralFeeInput,
+  replaceListingGeneralFees,
+  validateGeneralFeeIds
+} from '../db/generalFees.js';
+import {
   addListingOptions,
   groupListingOptions,
   ListingOptionValidationError,
@@ -11,12 +20,13 @@ import {
   validateListingOptionIds
 } from '../db/listingOptions.js';
 import { LocationValidationError, validateListingLocationIds } from '../db/locations.js';
+import usersDb from '../db/users.js';
 import { AuthenticatedRequest } from '../utils/authMiddleware.js';
 
 interface ListingCreateInput {
   title?: string;
   description?: string;
-  property_type?: string;
+  property_type?: PropertyTypeValue;
   listing_type?: 'sale' | 'rent';
   bedrooms?: number;
   bathrooms?: number;
@@ -26,6 +36,8 @@ interface ListingCreateInput {
   features?: string[];
   other?: string[];
   option_ids?: number[];
+  general_fees?: GeneralFeeInput[];
+  other_general_fees?: OtherGeneralFeeInput[];
   status?: 'draft' | 'active' | 'archived' | 'sold';
   sold?: boolean;
   region_id?: number;
@@ -63,7 +75,7 @@ interface UpdateListingRequestBody {
   title?: string;
   description?: string;
   location?: string;
-  property_type?: string;
+  property_type?: PropertyTypeValue;
   listing_type?: 'sale' | 'rent';
   bedrooms?: number;
   bathrooms?: number;
@@ -87,6 +99,8 @@ interface UpdateListingRequestBody {
   features?: string[];
   other?: string[];
   option_ids?: number[];
+  general_fees?: GeneralFeeInput[];
+  other_general_fees?: OtherGeneralFeeInput[];
   status?: 'draft' | 'active' | 'archived' | 'sold';
   sold?: boolean;
   region_id?: number;
@@ -96,6 +110,14 @@ interface UpdateListingRequestBody {
   is_published?: boolean;
   verified?: boolean;
 }
+
+export type PropertyTypeValue =
+  | 'House'
+  | 'Apartment / Flat'
+  | 'Villa'
+  | 'Commercial'
+  | 'Industrial'
+  | 'Vacant Land';
 
 function resolveOptionalAuthenticatedUserId(req: Request): string | null {
   const authHeader = req.headers.authorization;
@@ -224,6 +246,8 @@ export function normalizeCreateListingInput(input: Partial<ListingCreateInput>, 
     features,
     other,
     option_ids,
+    general_fees: Array.isArray(input.general_fees) ? input.general_fees : [],
+    other_general_fees: Array.isArray(input.other_general_fees) ? input.other_general_fees : [],
     status: normalizedStatus,
     sold: Boolean(input.sold ?? false),
     region_id: input.region_id ?? null,
@@ -235,6 +259,14 @@ export function normalizeCreateListingInput(input: Partial<ListingCreateInput>, 
   };
 }
 
+export function isAgentRole(role: unknown): boolean {
+  return role === 'AGENT';
+}
+
+export function requiresAgentForPropertyType(propertyType: unknown): boolean {
+  return propertyType === 'Commercial';
+}
+
 export const createListing: RequestHandler = async (req, res) => {
   const userId = (req as AuthenticatedRequest).user?.user_id;
 
@@ -243,8 +275,19 @@ export const createListing: RequestHandler = async (req, res) => {
   }
 
   try {
+    const userRole = await usersDb.getUserRole(userId);
     const payload = normalizeCreateListingInput(req.body as Partial<ListingCreateInput>, userId);
+
+    if (requiresAgentForPropertyType(payload.property_type) && !isAgentRole(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Only agents can create commercial property listings'
+      });
+    }
+
     await validateListingOptionIds(payload.option_ids);
+    await validateGeneralFeeIds(payload.general_fees);
     await validateListingLocationIds({
       region_id: payload.region_id,
       city_id: payload.city_id,
@@ -254,8 +297,12 @@ export const createListing: RequestHandler = async (req, res) => {
 
     const createdListing = await listingsDb.createListing(payload as Record<string, unknown>);
     await replaceListingOptionSelections(Number(createdListing.id), payload.option_ids);
+    await replaceListingGeneralFees(Number(createdListing.id), payload.general_fees, payload.other_general_fees);
 
-    return res.status(201).json({ success: true, listing: await addListingOptions(createdListing) });
+    return res.status(201).json({
+      success: true,
+      listing: await addListingGeneralFees(await addListingOptions(createdListing))
+    });
   } catch (error: unknown) {
     if (error instanceof LocationValidationError) {
       return res.status(400).json({
@@ -271,6 +318,15 @@ export const createListing: RequestHandler = async (req, res) => {
         error: 'Invalid listing options',
         message: error.message,
         option_ids: error.optionIds
+      });
+    }
+
+    if (error instanceof GeneralFeeValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid general fees',
+        message: error.message,
+        fee_ids: error.feeIds
       });
     }
 
@@ -319,7 +375,10 @@ export const publishListing: RequestHandler = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Listing not found' });
     }
 
-    return res.json({ success: true, listing: await addListingOptions(updatedListing) });
+    return res.json({
+      success: true,
+      listing: await addListingGeneralFees(await addListingOptions(updatedListing))
+    });
   } catch (error: unknown) {
     console.error('Publish listing error:', error);
     return res.status(500).json({
@@ -488,7 +547,10 @@ export const getListingById: RequestHandler = async (req, res) => {
       });
     }
 
-    return res.json({ success: true, listing: { ...(await addListingOptions(listing)), images } });
+    return res.json({
+      success: true,
+      listing: { ...(await addListingGeneralFees(await addListingOptions(listing))), images }
+    });
   } catch (error: unknown) {
     console.error('Get listing error:', error);
     return res.status(500).json({
@@ -533,7 +595,10 @@ export const getPublicListingById: RequestHandler = async (req, res) => {
       });
     }
 
-    return res.json({ success: true, listing: { ...(await addListingOptions(listing)), images } });
+    return res.json({
+      success: true,
+      listing: { ...(await addListingGeneralFees(await addListingOptions(listing))), images }
+    });
   } catch (error: unknown) {
     console.error('Get public listing error:', error);
     return res.status(500).json({
@@ -629,6 +694,18 @@ export const updateListing: RequestHandler = async (req, res) => {
       });
     }
 
+    if (requiresAgentForPropertyType(body.property_type)) {
+      const userRole = await usersDb.getUserRole(userId);
+
+      if (!isAgentRole(userRole)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden',
+          message: 'Only agents can create commercial property listings'
+        });
+      }
+    }
+
     await validateListingLocationIds({
       region_id: body.region_id,
       city_id: body.city_id,
@@ -650,7 +727,21 @@ export const updateListing: RequestHandler = async (req, res) => {
       await replaceListingOptionSelections(listingId, body.option_ids);
     }
 
-    return res.json({ success: true, listing: await addListingOptions(updatedListing) });
+    if (body.general_fees !== undefined || body.other_general_fees !== undefined) {
+      const existingFees = await getListingGeneralFees(listingId);
+      const generalFees = body.general_fees ?? existingFees.general_fees.map((fee) => ({
+        fee_id: fee.fee_id,
+        amount: fee.amount
+      }));
+      const otherGeneralFees = body.other_general_fees ?? existingFees.other_general_fees;
+      await validateGeneralFeeIds(generalFees);
+      await replaceListingGeneralFees(listingId, generalFees, otherGeneralFees);
+    }
+
+    return res.json({
+      success: true,
+      listing: await addListingGeneralFees(await addListingOptions(updatedListing))
+    });
   } catch (error: unknown) {
     if (error instanceof LocationValidationError) {
       return res.status(400).json({
@@ -666,6 +757,15 @@ export const updateListing: RequestHandler = async (req, res) => {
         error: 'Invalid listing options',
         message: error.message,
         option_ids: error.optionIds
+      });
+    }
+
+    if (error instanceof GeneralFeeValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid general fees',
+        message: error.message,
+        fee_ids: error.feeIds
       });
     }
 
@@ -724,7 +824,10 @@ export const deleteListing: RequestHandler = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Listing not found' });
     }
 
-    return res.json({ success: true, listing: await addListingOptions(archivedListing) });
+    return res.json({
+      success: true,
+      listing: await addListingGeneralFees(await addListingOptions(archivedListing))
+    });
   } catch (error: unknown) {
     console.error('Delete listing error:', error);
     return res.status(500).json({
@@ -755,7 +858,9 @@ export const getPrivateListings: RequestHandler = async (req, res) => {
     const safeOffset = (safePage - 1) * itemsPerPage;
 
     const privateListings = await listingsDb.getPrivateListings(userId, itemsPerPage, safeOffset);
-    const listings = await Promise.all(privateListings.map((listing) => addListingOptions(listing)));
+    const listings = await Promise.all(
+      privateListings.map(async (listing) => addListingGeneralFees(await addListingOptions(listing)))
+    );
 
     return res.json({
       success: true,
