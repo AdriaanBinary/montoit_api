@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildListingImageObjectKey, normalizeCreateListingInput } from '../services/listingsService.js';
 import { buildPublicListingsWhere } from '../services/publicListingsService.js';
-import { publicListingsQuerySchema } from './listings.js';
+import { listingResultSchema, publicListingsQuerySchema } from './listings.js';
 
 test('defaults new listings to draft and unpublished when not provided', () => {
   const payload = normalizeCreateListingInput({ title: 'Cozy apartment' }, 'u_test');
@@ -112,6 +112,28 @@ test('parses option ids and defaults option matching to any', () => {
 
 test('rejects unsupported option matching modes', () => {
   const parsed = publicListingsQuerySchema.safeParse({ optionMatch: 'none' });
+
+  assert.equal(parsed.success, false);
+});
+
+test('listing response schema accepts nested creator details', () => {
+  const creatorSchema = listingResultSchema.pick({ creator: true });
+  const parsed = creatorSchema.safeParse({
+    creator: {
+      id: 'u_abc1234567',
+      username: 'agent.jane',
+      role: 'AGENT',
+      email: 'jane@example.com',
+      phone: '+237677000000'
+    }
+  });
+
+  assert.equal(parsed.success, true);
+});
+
+test('listing response schema rejects missing creator details', () => {
+  const creatorSchema = listingResultSchema.pick({ creator: true });
+  const parsed = creatorSchema.safeParse({});
 
   assert.equal(parsed.success, false);
 });

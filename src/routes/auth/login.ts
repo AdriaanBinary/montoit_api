@@ -13,7 +13,8 @@ const loginBodySchema = z.object({
 const authUserSchema = z.object({
 	user_id: z.string(),
 	username: z.string(),
-	email: z.string().email()
+	email: z.string().email(),
+	phone: z.string().nullable().optional()
 });
 
 const loginSuccessResponseSchema = z.object({

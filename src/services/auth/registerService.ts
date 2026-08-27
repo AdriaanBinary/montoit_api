@@ -6,18 +6,19 @@ interface RegisterRequestBody {
   username?: string;
   email?: string;
   password?: string;
+  phone?: string;
 }
 
 export const register: RequestHandler = async (req, res) => {
   const typedReq = req as Request<{}, {}, RegisterRequestBody>;
-  const { username, email, password } = typedReq.body;
+  const { username, email, password, phone } = typedReq.body;
 
   if (!username || !email || !password) {
     return res.status(400).json({ error: 'username, email, and password are required' });
   }
 
   try {
-    const user = await addData.addUser(username, email, password);
+    const user = await addData.addUser(username, email, password, phone);
     const secret = process.env.JWT_KEY;
 
     if (!secret) {
@@ -34,6 +35,7 @@ export const register: RequestHandler = async (req, res) => {
         user_id: user.id,
         username: user.username,
         email: user.email,
+        phone: user.phone,
         created_at: user.created_at
       }
     });

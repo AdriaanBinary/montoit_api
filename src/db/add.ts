@@ -6,6 +6,7 @@ export interface CreatedUser {
   id: string;
   username: string;
   email: string;
+  phone: string | null;
   created_at: string;
 }
 
@@ -29,7 +30,7 @@ async function generateUniqueUserId(): Promise<string> {
 }
 
 const addData = {
-  addUser: async function(username: string, email: string, password: string): Promise<CreatedUser> {
+  addUser: async function(username: string, email: string, password: string, phone?: string): Promise<CreatedUser> {
     const usernameExists = await getData.checkUsername(username);
     if (usernameExists) {
       throw new Error('Username already exists');
@@ -48,12 +49,14 @@ const addData = {
         id: userId,
         username,
         email,
+        phone: typeof phone === 'string' && phone.trim().length > 0 ? phone.trim() : null,
         password: hashedPassword
       },
       select: {
         id: true,
         username: true,
         email: true,
+        phone: true,
         created_at: true
       }
     });
@@ -62,6 +65,7 @@ const addData = {
       id: user.id,
       username: user.username,
       email: user.email,
+      phone: user.phone,
       created_at: user.created_at.toISOString()
     };
   }

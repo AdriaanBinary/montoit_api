@@ -19,7 +19,94 @@ import { checkAuth } from '../utils/authMiddleware.js';
 
 const router = express.Router();
 
-const listingResultSchema = z.record(z.string(), z.unknown());
+const listingCreatorSchema = z.object({
+  id: z.string(),
+  username: z.string(),
+  role: z.enum(['PRIVATE', 'AGENT']),
+  email: z.string().email(),
+  phone: z.string().nullable()
+});
+
+const listingOptionSchema = z.object({
+  id: z.number().int().positive(),
+  name: z.string(),
+  type: z.enum(['AMENITY', 'SECURITY_OPTION'])
+});
+
+const listingGeneralFeeSchema = z.object({
+  fee_id: z.number().int().positive(),
+  name: z.string(),
+  amount: z.number().nonnegative()
+});
+
+const listingOtherGeneralFeeResultSchema = z.object({
+  description: z.string(),
+  amount: z.number().nonnegative()
+});
+
+const listingImageResultSchema = z.object({
+  id: z.string(),
+  bucket: z.string(),
+  object_key: z.string(),
+  upload_confirmed: z.boolean().optional(),
+  sort_order: z.number().int().optional(),
+  file_name: z.string().optional(),
+  upload_url: z.string().optional(),
+  view_url: z.string().optional(),
+  url: z.string().optional()
+});
+
+export const listingResultSchema = z
+  .object({
+    id: z.number().int().positive(),
+    user_id: z.string(),
+    creator: listingCreatorSchema,
+    title: z.string().nullable(),
+    description: z.string().nullable(),
+    location: z.string().nullable(),
+    property_type: z.enum(['House', 'Apartment / Flat', 'Villa', 'Commercial', 'Industrial', 'Vacant Land']).nullable(),
+    listing_type: z.enum(['SALE', 'RENT']),
+    bedrooms: z.number().int().nullable(),
+    bathrooms: z.number().nullable(),
+    property_size: z.number().nullable(),
+    living_area: z.number().nullable(),
+    land_size: z.number().nullable(),
+    amount: z.number().nullable(),
+    furnished: z.boolean().nullable(),
+    available_from: z.string().nullable(),
+    rental_term: z.string().nullable(),
+    parking_spaces: z.number().int().nullable(),
+    parking_type: z.string().nullable(),
+    pet_friendly: z.boolean().nullable(),
+    garden: z.boolean().nullable(),
+    pool: z.boolean().nullable(),
+    flatlet: z.boolean().nullable(),
+    retirement: z.boolean().nullable(),
+    on_show: z.boolean().nullable(),
+    security_estate: z.boolean().nullable(),
+    currency: z.string(),
+    features: z.array(z.string()),
+    other: z.array(z.string()),
+    status: z.enum(['draft', 'active', 'archived', 'sold']),
+    sold: z.boolean().nullable(),
+    region_id: z.number().int().nullable(),
+    city_id: z.number().int().nullable(),
+    municipality_id: z.number().int().nullable(),
+    neighborhood_id: z.number().int().nullable(),
+    listing_owner_type: z.enum(['PRIVATE', 'AGENT']).nullable(),
+    agency_id: z.number().int().nullable(),
+    is_published: z.boolean(),
+    verified: z.boolean(),
+    deleted_at: z.string().nullable(),
+    created_at: z.string(),
+    updated_at: z.string(),
+    option_ids: z.array(z.number().int().positive()),
+    options: z.array(listingOptionSchema),
+    general_fees: z.array(listingGeneralFeeSchema),
+    other_general_fees: z.array(listingOtherGeneralFeeResultSchema),
+    images: z.array(listingImageResultSchema).optional()
+  })
+  .passthrough();
 
 const optionalBooleanQueryParam = z
   .preprocess((value) => {
@@ -248,12 +335,6 @@ const listingResponseSchema = z.object({
 const listingCreateResponseSchema = z.object({
   success: z.literal(true),
   listing: listingResultSchema
-});
-
-const listingOptionSchema = z.object({
-  id: z.number().int().positive(),
-  name: z.string(),
-  type: z.enum(['AMENITY', 'SECURITY_OPTION'])
 });
 
 const listingOptionsResponseSchema = z.object({

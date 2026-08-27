@@ -1,0 +1,7 @@
+ALTER TABLE "users"
+  ADD COLUMN IF NOT EXISTS "phone" VARCHAR(50);
+
+ALTER TABLE "listings"
+  ADD CONSTRAINT "listings_user_id_fkey"
+  FOREIGN KEY ("user_id") REFERENCES "users"("id")
+  ON DELETE RESTRICT ON UPDATE CASCADE;

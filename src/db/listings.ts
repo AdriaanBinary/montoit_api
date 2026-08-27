@@ -85,6 +85,18 @@ function toRecords(values: unknown[]): Record<string, unknown>[] {
   return values.map((value) => toRecord(value));
 }
 
+const listingCreatorInclude = {
+  creator: {
+    select: {
+      id: true,
+      username: true,
+      role: true,
+      email: true,
+      phone: true
+    }
+  }
+};
+
 export interface ListingImageInsertResult {
   id: string;
   listing_id: number;
@@ -127,7 +139,8 @@ const listingsDb = {
         neighborhood_id: asInteger(payload.neighborhood_id),
         is_published: Boolean(payload.is_published ?? false),
         verified: Boolean(payload.verified ?? false)
-      }
+      },
+      include: listingCreatorInclude
     });
 
     return toRecord(created);
@@ -152,7 +165,8 @@ const listingsDb = {
         status: 'active',
         is_published: true,
         updated_at: new Date()
-      }
+      },
+      include: listingCreatorInclude
     });
 
     return toRecord(updated);
@@ -163,7 +177,8 @@ const listingsDb = {
       where: {
         id: listingId,
         deleted_at: null
-      }
+      },
+      include: listingCreatorInclude
     });
 
     return listing ? toRecord(listing) : null;
@@ -175,7 +190,8 @@ const listingsDb = {
         id: listingId,
         user_id: userId,
         deleted_at: null
-      }
+      },
+      include: listingCreatorInclude
     });
 
     return listing ? toRecord(listing) : null;
@@ -188,7 +204,8 @@ const listingsDb = {
         status: 'active',
         is_published: true,
         deleted_at: null
-      }
+      },
+      include: listingCreatorInclude
     });
 
     return listing ? toRecord(listing) : null;
@@ -252,7 +269,8 @@ const listingsDb = {
 
     const updated = await prisma.listing.update({
       where: { id: listingId },
-      data
+      data,
+      include: listingCreatorInclude
     });
 
     return toRecord(updated);
@@ -278,7 +296,8 @@ const listingsDb = {
         is_published: false,
         deleted_at: new Date(),
         updated_at: new Date()
-      }
+      },
+      include: listingCreatorInclude
     });
 
     return toRecord(archived);
@@ -440,7 +459,8 @@ const listingsDb = {
         created_at: 'desc'
       },
       take: limit,
-      skip: offset
+      skip: offset,
+      include: listingCreatorInclude
     });
 
     return toRecords(listings);
@@ -464,7 +484,8 @@ const listingsDb = {
       where,
       orderBy,
       take: limit,
-      skip: offset
+      skip: offset,
+      include: listingCreatorInclude
     });
 
     const listingIds = listings

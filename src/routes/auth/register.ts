@@ -8,13 +8,15 @@ const router = express.Router();
 const registerBodySchema = z.object({
 	username: z.string().min(1),
 	email: z.string().email(),
-	password: z.string().min(1)
+	password: z.string().min(1),
+	phone: z.string().trim().min(1).optional()
 });
 
 const registerUserSchema = z.object({
 	user_id: z.string(),
 	username: z.string(),
 	email: z.string().email(),
+	phone: z.string().nullable(),
 	created_at: z.union([z.string(), z.date()])
 });
 

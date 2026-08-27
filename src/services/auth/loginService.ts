@@ -33,7 +33,8 @@ export const login: RequestHandler = async (req, res) => {
         user: {
           user_id: user.id,
           username: user.username,
-          email: user.email
+          email: user.email,
+          phone: user.phone ?? null
         }
       });
     }

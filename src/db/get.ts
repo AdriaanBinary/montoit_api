@@ -6,6 +6,7 @@ export interface UserRecord {
   user_id?: string;
   username: string;
   email: string;
+  phone: string | null;
   password: string;
   created_at?: string;
   updated_at?: string;
@@ -48,6 +49,7 @@ const getData = {
           id: true,
           username: true,
           email: true,
+          phone: true,
           password: true,
           created_at: true,
           updated_at: true
@@ -68,6 +70,7 @@ const getData = {
         id: user.id,
         username: user.username,
         email: user.email,
+        phone: user.phone,
         password: storedPassword,
         created_at: user.created_at.toISOString(),
         updated_at: user.updated_at.toISOString()
