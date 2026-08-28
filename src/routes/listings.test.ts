@@ -9,7 +9,6 @@ test('defaults new listings to draft and unpublished when not provided', () => {
 
   assert.equal(payload.user_id, 'u_test');
   assert.equal(payload.status, 'draft');
-  assert.equal(payload.is_published, false);
   assert.equal(payload.currency, 'XAF');
   assert.deepEqual(payload.features, []);
   assert.deepEqual(payload.other, []);
@@ -20,7 +19,6 @@ test('preserves explicit values when creating a listing', () => {
     {
       title: 'Luxury villa',
       status: 'active',
-      is_published: true,
       amount: 250000,
       bedrooms: 3,
       bathrooms: 2.5,
@@ -31,7 +29,6 @@ test('preserves explicit values when creating a listing', () => {
 
   assert.equal(payload.title, 'Luxury villa');
   assert.equal(payload.status, 'active');
-  assert.equal(payload.is_published, true);
   assert.equal(payload.amount, 250000);
   assert.equal(payload.bedrooms, 3);
   assert.equal(payload.bathrooms, 2.5);

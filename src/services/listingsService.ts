@@ -44,7 +44,6 @@ interface ListingCreateInput {
   city_id?: number;
   municipality_id?: number;
   neighborhood_id?: number;
-  is_published?: boolean;
   verified?: boolean;
 }
 
@@ -107,7 +106,6 @@ interface UpdateListingRequestBody {
   city_id?: number;
   municipality_id?: number;
   neighborhood_id?: number;
-  is_published?: boolean;
   verified?: boolean;
 }
 
@@ -225,6 +223,20 @@ export function validatePublishRequirements(confirmedImageCount: number): { vali
   };
 }
 
+export function validateRightsConfirmation(rightsConfirmed: unknown): { valid: boolean; message?: string } {
+  if (rightsConfirmed !== true) {
+    return {
+      valid: false,
+      message: 'You must confirm you have the rights and permission to publish this listing.'
+    };
+  }
+
+  return {
+    valid: true,
+    message: undefined
+  };
+}
+
 export function normalizeCreateListingInput(input: Partial<ListingCreateInput>, userId: string) {
   const normalizedStatus = normalizeListingStatus(input.status);
   const normalizedListingType = input.listing_type === 'rent' ? 'rent' : 'sale';
@@ -254,7 +266,6 @@ export function normalizeCreateListingInput(input: Partial<ListingCreateInput>, 
     city_id: input.city_id ?? null,
     municipality_id: input.municipality_id ?? null,
     neighborhood_id: input.neighborhood_id ?? null,
-    is_published: Boolean(input.is_published ?? false),
     verified: Boolean(input.verified ?? false)
   };
 }
@@ -342,6 +353,7 @@ export const createListing: RequestHandler = async (req, res) => {
 export const publishListing: RequestHandler = async (req, res) => {
   const userId = (req as AuthenticatedRequest).user?.user_id;
   const listingId = Number(req.params.id);
+  const body = (req.body ?? {}) as { rights_confirmed?: boolean };
 
   if (!userId) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -356,6 +368,16 @@ export const publishListing: RequestHandler = async (req, res) => {
 
     if (!listing) {
       return res.status(404).json({ success: false, error: 'Listing not found' });
+    }
+
+    const rightsValidation = validateRightsConfirmation(body.rights_confirmed);
+
+    if (!rightsValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: 'Rights confirmation required',
+        message: rightsValidation.message
+      });
     }
 
     const confirmedImages = await listingsDb.getListingImages(listingId);
@@ -384,6 +406,45 @@ export const publishListing: RequestHandler = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Failed to publish listing',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+export const unpublishListing: RequestHandler = async (req, res) => {
+  const userId = (req as AuthenticatedRequest).user?.user_id;
+  const listingId = Number(req.params.id);
+
+  if (!userId) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  if (!Number.isInteger(listingId)) {
+    return res.status(400).json({ success: false, error: 'Invalid listing id' });
+  }
+
+  try {
+    const listing = await listingsDb.getOwnedListingById(listingId, userId);
+
+    if (!listing) {
+      return res.status(404).json({ success: false, error: 'Listing not found' });
+    }
+
+    const updatedListing = await listingsDb.unpublishListing(listingId, userId);
+
+    if (!updatedListing) {
+      return res.status(404).json({ success: false, error: 'Listing not found' });
+    }
+
+    return res.json({
+      success: true,
+      listing: await addListingGeneralFees(await addListingOptions(updatedListing))
+    });
+  } catch (error: unknown) {
+    console.error('Unpublish listing error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to unpublish listing',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }

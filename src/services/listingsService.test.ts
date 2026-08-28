@@ -5,7 +5,8 @@ import {
   isAgentRole,
   normalizeCreateListingInput,
   requiresAgentForPropertyType,
-  validatePublishRequirements
+  validatePublishRequirements,
+  validateRightsConfirmation
 } from './listingsService.js';
 
 test('requires an agent only for commercial listings', () => {
@@ -45,6 +46,23 @@ test('requires at least 5 confirmed images before a listing can be published', (
   });
 
   assert.deepEqual(validatePublishRequirements(10), {
+    valid: true,
+    message: undefined
+  });
+});
+
+test('requires an explicit true rights confirmation before a listing can be published', () => {
+  assert.deepEqual(validateRightsConfirmation(undefined), {
+    valid: false,
+    message: 'You must confirm you have the rights and permission to publish this listing.'
+  });
+
+  assert.deepEqual(validateRightsConfirmation(false), {
+    valid: false,
+    message: 'You must confirm you have the rights and permission to publish this listing.'
+  });
+
+  assert.deepEqual(validateRightsConfirmation(true), {
     valid: true,
     message: undefined
   });

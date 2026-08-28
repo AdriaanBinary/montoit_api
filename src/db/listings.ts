@@ -1,4 +1,5 @@
 import prisma from './prisma.js';
+import { ensureCameroonLocationDataInitialized } from './locations.js';
 
 function asString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
@@ -97,6 +98,95 @@ const listingCreatorInclude = {
   }
 };
 
+type ListingLocationDetails = {
+  region: { id: number; name: string } | null;
+  city: { id: number; name: string } | null;
+  municipality: { id: number; name: string } | null;
+  neighborhood: { id: number; name: string; aliases: string[] } | null;
+};
+
+async function attachListingLocationDetails(listing: Record<string, unknown>): Promise<Record<string, unknown>> {
+  await ensureCameroonLocationDataInitialized();
+
+  const regionId = typeof listing.region_id === 'number' ? listing.region_id : null;
+  const cityId = typeof listing.city_id === 'number' ? listing.city_id : null;
+  const municipalityId = typeof listing.municipality_id === 'number' ? listing.municipality_id : null;
+  const neighborhoodId = typeof listing.neighborhood_id === 'number' ? listing.neighborhood_id : null;
+
+  if (regionId === null && cityId === null && municipalityId === null && neighborhoodId === null) {
+    return {
+      ...listing,
+      location_details: {
+        region: null,
+        city: null,
+        municipality: null,
+        neighborhood: null
+      } satisfies ListingLocationDetails
+    };
+  }
+
+  const rows = await prisma.$queryRawUnsafe<
+    Array<{
+      region_id: number | null;
+      region_name: string | null;
+      city_id: number | null;
+      city_name: string | null;
+      municipality_id: number | null;
+      municipality_name: string | null;
+      neighborhood_id: number | null;
+      neighborhood_name: string | null;
+      neighborhood_aliases: string[] | null;
+    }>
+  >(
+    `SELECT r.id AS region_id, r.name AS region_name,
+            c.id AS city_id, c.name AS city_name,
+            m.id AS municipality_id, m.name AS municipality_name,
+            n.id AS neighborhood_id, n.name AS neighborhood_name,
+            n.aliases AS neighborhood_aliases
+       FROM regions r
+       FULL OUTER JOIN cities c ON c.region_id = r.id
+       FULL OUTER JOIN municipalities m ON m.city_id = c.id
+       FULL OUTER JOIN neighborhoods n ON n.municipality_id = m.id
+      WHERE ($1::integer IS NULL OR r.id = $1)
+        AND ($2::integer IS NULL OR c.id = $2)
+        AND ($3::integer IS NULL OR m.id = $3)
+        AND ($4::integer IS NULL OR n.id = $4)
+      LIMIT 1`,
+    regionId,
+    cityId,
+    municipalityId,
+    neighborhoodId
+  );
+
+  const row = rows[0];
+  const locationDetails: ListingLocationDetails = {
+    region: row?.region_id !== null && row?.region_id !== undefined && row?.region_name
+      ? { id: row.region_id, name: row.region_name }
+      : null,
+    city: row?.city_id !== null && row?.city_id !== undefined && row?.city_name
+      ? { id: row.city_id, name: row.city_name }
+      : null,
+    municipality:
+      row?.municipality_id !== null && row?.municipality_id !== undefined && row?.municipality_name
+        ? { id: row.municipality_id, name: row.municipality_name }
+        : null,
+    neighborhood:
+      row?.neighborhood_id !== null && row?.neighborhood_id !== undefined && row?.neighborhood_name
+        ? {
+            id: row.neighborhood_id,
+            name: row.neighborhood_name,
+            aliases: Array.isArray(row.neighborhood_aliases) ? row.neighborhood_aliases : []
+          }
+        : null
+  };
+
+  return { ...listing, location_details: locationDetails };
+}
+
+async function attachListingLocations(listings: Record<string, unknown>[]): Promise<Record<string, unknown>[]> {
+  return Promise.all(listings.map((listing) => attachListingLocationDetails(listing)));
+}
+
 export interface ListingImageInsertResult {
   id: string;
   listing_id: number;
@@ -137,13 +227,12 @@ const listingsDb = {
         city_id: asInteger(payload.city_id),
         municipality_id: asInteger(payload.municipality_id),
         neighborhood_id: asInteger(payload.neighborhood_id),
-        is_published: Boolean(payload.is_published ?? false),
         verified: Boolean(payload.verified ?? false)
       },
       include: listingCreatorInclude
     });
 
-    return toRecord(created);
+    return attachListingLocationDetails(toRecord(created));
   },
 
   publishListing: async function(listingId: number, userId: string): Promise<Record<string, unknown> | null> {
@@ -164,12 +253,41 @@ const listingsDb = {
       data: {
         status: 'active',
         is_published: true,
+        rights_confirmed: true,
+        rights_confirmed_at: new Date(),
         updated_at: new Date()
       },
       include: listingCreatorInclude
     });
 
-    return toRecord(updated);
+    return attachListingLocationDetails(toRecord(updated));
+  },
+
+  unpublishListing: async function(listingId: number, userId: string): Promise<Record<string, unknown> | null> {
+    const existing = await prisma.listing.findFirst({
+      where: {
+        id: listingId,
+        user_id: userId,
+        deleted_at: null
+      }
+    });
+
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await prisma.listing.update({
+      where: { id: listingId },
+      data: {
+        is_published: false,
+        rights_confirmed: false,
+        rights_confirmed_at: null,
+        updated_at: new Date()
+      },
+      include: listingCreatorInclude
+    });
+
+    return attachListingLocationDetails(toRecord(updated));
   },
 
   getListingById: async function(listingId: number): Promise<Record<string, unknown> | null> {
@@ -181,7 +299,7 @@ const listingsDb = {
       include: listingCreatorInclude
     });
 
-    return listing ? toRecord(listing) : null;
+    return listing ? attachListingLocationDetails(toRecord(listing)) : null;
   },
 
   getOwnedListingById: async function(listingId: number, userId: string): Promise<Record<string, unknown> | null> {
@@ -194,7 +312,7 @@ const listingsDb = {
       include: listingCreatorInclude
     });
 
-    return listing ? toRecord(listing) : null;
+    return listing ? attachListingLocationDetails(toRecord(listing)) : null;
   },
 
   getPublicListingById: async function(listingId: number): Promise<Record<string, unknown> | null> {
@@ -208,7 +326,7 @@ const listingsDb = {
       include: listingCreatorInclude
     });
 
-    return listing ? toRecord(listing) : null;
+    return listing ? attachListingLocationDetails(toRecord(listing)) : null;
   },
 
   updateOwnedListing: async function(
@@ -264,7 +382,6 @@ const listingsDb = {
     if (payload.city_id !== undefined) data.city_id = asInteger(payload.city_id);
     if (payload.municipality_id !== undefined) data.municipality_id = asInteger(payload.municipality_id);
     if (payload.neighborhood_id !== undefined) data.neighborhood_id = asInteger(payload.neighborhood_id);
-    if (payload.is_published !== undefined) data.is_published = typeof payload.is_published === 'boolean' ? payload.is_published : false;
     if (payload.verified !== undefined) data.verified = typeof payload.verified === 'boolean' ? payload.verified : false;
 
     const updated = await prisma.listing.update({
@@ -273,7 +390,7 @@ const listingsDb = {
       include: listingCreatorInclude
     });
 
-    return toRecord(updated);
+    return attachListingLocationDetails(toRecord(updated));
   },
 
   archiveOwnedListing: async function(listingId: number, userId: string): Promise<Record<string, unknown> | null> {
@@ -294,13 +411,15 @@ const listingsDb = {
       data: {
         status: 'archived',
         is_published: false,
+        rights_confirmed: false,
+        rights_confirmed_at: null,
         deleted_at: new Date(),
         updated_at: new Date()
       },
       include: listingCreatorInclude
     });
 
-    return toRecord(archived);
+    return attachListingLocationDetails(toRecord(archived));
   },
 
   ensureListingEnquiriesTable: async function(): Promise<void> {
@@ -463,7 +582,7 @@ const listingsDb = {
       include: listingCreatorInclude
     });
 
-    return toRecords(listings);
+    return attachListingLocations(toRecords(listings));
   },
 
   countPublicListings: async function(where: Record<string, unknown>): Promise<number> {
@@ -493,7 +612,7 @@ const listingsDb = {
       .filter((id: unknown): id is number => Number.isInteger(id));
 
     if (listingIds.length === 0) {
-      return toRecords(listings).map((listing) => ({ ...listing, images: [] }));
+      return (await attachListingLocations(toRecords(listings))).map((listing) => ({ ...listing, images: [] }));
     }
 
     const listingImages = await prisma.listingImage.findMany({
@@ -515,7 +634,9 @@ const listingsDb = {
       }
     }
 
-    return toRecords(listings).map((listing) => {
+    const listingsWithLocations = await attachListingLocations(toRecords(listings));
+
+    return listingsWithLocations.map((listing) => {
       const listingId = typeof listing.id === 'number' ? listing.id : Number(listing.id);
       const images = Number.isInteger(listingId) ? (imagesByListing.get(listingId) ?? []) : [];
 

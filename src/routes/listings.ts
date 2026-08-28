@@ -10,6 +10,7 @@ import {
   getListingOptions,
   getPrivateListings,
   publishListing,
+  unpublishListing,
   updateListing,
   uploadListingImages
 } from '../services/listingsService.js';
@@ -56,6 +57,15 @@ const listingImageResultSchema = z.object({
   url: z.string().optional()
 });
 
+const listingLocationDetailsSchema = z.object({
+  region: z.object({ id: z.number().int().positive(), name: z.string() }).nullable(),
+  city: z.object({ id: z.number().int().positive(), name: z.string() }).nullable(),
+  municipality: z.object({ id: z.number().int().positive(), name: z.string() }).nullable(),
+  neighborhood: z
+    .object({ id: z.number().int().positive(), name: z.string(), aliases: z.array(z.string()) })
+    .nullable()
+});
+
 export const listingResultSchema = z
   .object({
     id: z.number().int().positive(),
@@ -64,6 +74,7 @@ export const listingResultSchema = z
     title: z.string().nullable(),
     description: z.string().nullable(),
     location: z.string().nullable(),
+    location_details: listingLocationDetailsSchema,
     property_type: z.enum(['House', 'Apartment / Flat', 'Villa', 'Commercial', 'Industrial', 'Vacant Land']).nullable(),
     listing_type: z.enum(['SALE', 'RENT']),
     bedrooms: z.number().int().nullable(),
@@ -96,6 +107,8 @@ export const listingResultSchema = z
     listing_owner_type: z.enum(['PRIVATE', 'AGENT']).nullable(),
     agency_id: z.number().int().nullable(),
     is_published: z.boolean(),
+    rights_confirmed: z.boolean(),
+    rights_confirmed_at: z.string().nullable(),
     verified: z.boolean(),
     deleted_at: z.string().nullable(),
     created_at: z.string(),
@@ -205,6 +218,14 @@ const listingImageParamsSchema = z.object({
   imageId: z.string().min(1)
 });
 
+const publishListingBodySchema = z.object({
+  rights_confirmed: z
+    .boolean()
+    .refine((value) => value === true, {
+      message: 'You must confirm you have the rights and permission to publish this listing.'
+    })
+});
+
 const listingEnquiryBodySchema = z.object({
   name: z.string().trim().min(1),
   email: z.string().email(),
@@ -259,7 +280,6 @@ const listingUpdateBodySchema = z
     city_id: z.coerce.number().int().positive().optional(),
     municipality_id: z.coerce.number().int().positive().optional(),
     neighborhood_id: z.coerce.number().int().positive().optional(),
-    is_published: z.boolean().optional(),
     verified: z.boolean().optional()
   })
   .refine((value) => Object.values(value).some((entry) => entry !== undefined), {
@@ -287,7 +307,6 @@ const createListingBodySchema = z.object({
   city_id: z.coerce.number().int().positive().optional(),
   municipality_id: z.coerce.number().int().positive().optional(),
   neighborhood_id: z.coerce.number().int().positive().optional(),
-  is_published: z.boolean().optional(),
   verified: z.boolean().optional()
 });
 
@@ -459,17 +478,38 @@ registerApiRoute({
   method: 'post',
   path: '/api/listings/{id}/publish',
   summary: 'Publish a listing',
+  description: 'Requires the listing owner to confirm they have the rights and permission to publish the listing.',
+  tags: ['Listings'],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: listingIdParamsSchema,
+    body: publishListingBodySchema
+  },
+  responses: {
+    200: { description: 'Listing published', schema: listingResponseSchema },
+    400: { description: 'Invalid listing id or missing rights confirmation', schema: simpleErrorResponseSchema },
+    401: { description: 'Unauthorized', schema: simpleErrorResponseSchema },
+    404: { description: 'Listing not found', schema: simpleErrorResponseSchema },
+    500: { description: 'Failed to publish listing', schema: genericErrorResponseSchema }
+  }
+});
+
+registerApiRoute({
+  method: 'post',
+  path: '/api/listings/{id}/unpublish',
+  summary: 'Unpublish a listing',
+  description: 'Clears the recorded rights confirmation; the owner must reconfirm to publish again.',
   tags: ['Listings'],
   security: [{ bearerAuth: [] }],
   request: {
     params: listingIdParamsSchema
   },
   responses: {
-    200: { description: 'Listing published', schema: listingResponseSchema },
+    200: { description: 'Listing unpublished', schema: listingResponseSchema },
     400: { description: 'Invalid listing id', schema: simpleErrorResponseSchema },
     401: { description: 'Unauthorized', schema: simpleErrorResponseSchema },
     404: { description: 'Listing not found', schema: simpleErrorResponseSchema },
-    500: { description: 'Failed to publish listing', schema: genericErrorResponseSchema }
+    500: { description: 'Failed to unpublish listing', schema: genericErrorResponseSchema }
   }
 });
 
@@ -651,7 +691,27 @@ router.post('/listings/:id/publish', checkAuth, (req, res, next) => {
     return res.status(400).json({ success: false, error: 'Invalid listing id' });
   }
 
+  const parsedBody = publishListingBodySchema.safeParse(req.body);
+
+  if (!parsedBody.success) {
+    return res.status(400).json({
+      success: false,
+      error: 'Rights confirmation required',
+      message: parsedBody.error.issues.map((issue) => issue.message).join(', ')
+    });
+  }
+
+  req.body = parsedBody.data;
   return publishListing(req, res, next);
+});
+router.post('/listings/:id/unpublish', checkAuth, (req, res, next) => {
+  const parsedParams = listingIdParamsSchema.safeParse(req.params);
+
+  if (!parsedParams.success) {
+    return res.status(400).json({ success: false, error: 'Invalid listing id' });
+  }
+
+  return unpublishListing(req, res, next);
 });
 router.post('/listings/:id/images', checkAuth, (req, res, next) => {
   const parsedParams = listingIdParamsSchema.safeParse(req.params);

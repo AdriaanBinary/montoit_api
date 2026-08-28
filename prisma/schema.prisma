@@ -76,6 +76,8 @@ model Listing {
   listing_owner_type ListingOwnerType? @default(PRIVATE)
   agency_id          Int?
   is_published       Boolean           @default(false)
+  rights_confirmed    Boolean           @default(false)
+  rights_confirmed_at DateTime?         @db.Timestamptz(6)
   verified           Boolean           @default(false)
   deleted_at         DateTime?         @db.Timestamptz(6)
   created_at         DateTime          @default(now()) @db.Timestamptz(6)
