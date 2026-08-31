@@ -22,6 +22,7 @@ import {
 import { LocationValidationError, validateListingLocationIds } from '../db/locations.js';
 import usersDb from '../db/users.js';
 import { AuthenticatedRequest } from '../utils/authMiddleware.js';
+import { attachPublicImageUrls } from './publicListingsService.js';
 
 interface ListingCreateInput {
   title?: string;
@@ -569,6 +570,57 @@ export const confirmListingImageUpload: RequestHandler = async (req, res) => {
   }
 };
 
+export const reorderListingImages: RequestHandler = async (req, res) => {
+  const userId = (req as AuthenticatedRequest).user?.user_id;
+  const listingId = Number(req.params.id);
+  const body = (req.body ?? {}) as { image_ids?: string[] };
+
+  if (!userId) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  if (!Number.isInteger(listingId)) {
+    return res.status(400).json({ success: false, error: 'Invalid listing id' });
+  }
+
+  const imageIds = Array.isArray(body.image_ids) ? body.image_ids : [];
+
+  if (imageIds.length === 0) {
+    return res.status(400).json({ success: false, error: 'image_ids must be a non-empty array' });
+  }
+
+  try {
+    const listing = await listingsDb.getOwnedListingById(listingId, userId);
+
+    if (!listing) {
+      return res.status(404).json({ success: false, error: 'Listing not found' });
+    }
+
+    const images = await listingsDb.reorderListingImages(listingId, imageIds);
+    const bucketName = process.env.AWS_S3_BUCKET ?? 'property-images';
+
+    const hydratedImages = await Promise.all(
+      images.map(async (image) => ({
+        id: image.id,
+        bucket: bucketName,
+        object_key: image.object_key,
+        upload_confirmed: image.upload_confirmed,
+        sort_order: image.sort_order,
+        url: await buildPresignedGetUrl(bucketName, image.object_key)
+      }))
+    );
+
+    return res.json({ success: true, images: hydratedImages });
+  } catch (error: unknown) {
+    console.error('Reorder listing images error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to reorder listing images',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
 export const getListingById: RequestHandler = async (req, res) => {
   const userId = (req as AuthenticatedRequest).user?.user_id;
   const listingId = Number(req.params.id);
@@ -919,9 +971,10 @@ export const getPrivateListings: RequestHandler = async (req, res) => {
     const safeOffset = (safePage - 1) * itemsPerPage;
 
     const privateListings = await listingsDb.getPrivateListings(userId, itemsPerPage, safeOffset);
-    const listings = await Promise.all(
+    const listingsWithDetails = await Promise.all(
       privateListings.map(async (listing) => addListingGeneralFees(await addListingOptions(listing)))
     );
+    const listings = await attachPublicImageUrls(listingsWithDetails);
 
     return res.json({
       success: true,

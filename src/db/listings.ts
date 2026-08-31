@@ -582,7 +582,69 @@ const listingsDb = {
       include: listingCreatorInclude
     });
 
-    return attachListingLocations(toRecords(listings));
+    const listingIds = listings
+      .map((listing: { id: unknown }) => listing.id)
+      .filter((id: unknown): id is number => Number.isInteger(id));
+
+    if (listingIds.length === 0) {
+      return (await attachListingLocations(toRecords(listings))).map((listing) => ({ ...listing, images: [] }));
+    }
+
+    const listingImages = await prisma.listingImage.findMany({
+      where: {
+        listing_id: { in: listingIds },
+        upload_confirmed: true
+      },
+      orderBy: [{ listing_id: 'asc' }, { sort_order: 'asc' }, { created_at: 'asc' }]
+    });
+
+    const imagesByListing = new Map<number, Record<string, unknown>[]>();
+
+    for (const image of listingImages) {
+      const images = imagesByListing.get(image.listing_id) ?? [];
+      images.push(toRecord(image));
+      imagesByListing.set(image.listing_id, images);
+    }
+
+    const listingsWithLocations = await attachListingLocations(toRecords(listings));
+
+    return listingsWithLocations.map((listing) => {
+      const listingId = typeof listing.id === 'number' ? listing.id : Number(listing.id);
+      const images = Number.isInteger(listingId) ? (imagesByListing.get(listingId) ?? []) : [];
+
+      return {
+        ...listing,
+        images
+      };
+    });
+  },
+
+  reorderListingImages: async function(
+    listingId: number,
+    orderedImageIds: string[]
+  ): Promise<ListingImageRecord[]> {
+    const existingImages = await prisma.listingImage.findMany({
+      where: { listing_id: listingId }
+    });
+
+    const existingIds = new Set(existingImages.map((image) => image.id));
+    const validOrderedIds = orderedImageIds.filter((id) => existingIds.has(id));
+
+    await prisma.$transaction(
+      validOrderedIds.map((imageId, index) =>
+        prisma.listingImage.update({
+          where: { id: imageId },
+          data: { sort_order: index }
+        })
+      )
+    );
+
+    const updatedImages = await prisma.listingImage.findMany({
+      where: { listing_id: listingId },
+      orderBy: [{ sort_order: 'asc' }, { created_at: 'asc' }]
+    });
+
+    return JSON.parse(JSON.stringify(updatedImages)) as ListingImageRecord[];
   },
 
   countPublicListings: async function(where: Record<string, unknown>): Promise<number> {

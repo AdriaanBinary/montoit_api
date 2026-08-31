@@ -1,6 +1,17 @@
 import prisma from './prisma.js';
 import { getAvailableGeneralFees } from './generalFees.js';
 
+const LISTING_OPTIONS_CACHE_TTL_MS = 60 * 60 * 1000;
+
+let listingOptionsCache: {
+  data: {
+    amenities: ListingOptionRecord[];
+    security_options: ListingOptionRecord[];
+    general_fees: { id: number; name: string }[];
+  };
+  cachedAt: number;
+} | null = null;
+
 export type ListingOptionType = 'AMENITY' | 'SECURITY_OPTION';
 
 export interface ListingOptionRecord {
@@ -103,12 +114,22 @@ export async function groupListingOptions(): Promise<{
   security_options: ListingOptionRecord[];
   general_fees: { id: number; name: string }[];
 }> {
+  const now = Date.now();
+
+  if (listingOptionsCache && now - listingOptionsCache.cachedAt < LISTING_OPTIONS_CACHE_TTL_MS) {
+    return listingOptionsCache.data;
+  }
+
   const options = await getAvailableListingOptions();
   const generalFees = await getAvailableGeneralFees();
 
-  return {
+  const data = {
     amenities: options.filter((option) => option.type === 'AMENITY'),
     security_options: options.filter((option) => option.type === 'SECURITY_OPTION'),
     general_fees: generalFees
   };
+
+  listingOptionsCache = { data, cachedAt: now };
+
+  return data;
 }

@@ -10,6 +10,7 @@ import {
   getListingOptions,
   getPrivateListings,
   publishListing,
+  reorderListingImages,
   unpublishListing,
   updateListing,
   uploadListingImages
@@ -216,6 +217,15 @@ const listingIdParamsSchema = z.object({
 const listingImageParamsSchema = z.object({
   listingId: z.coerce.number().int().positive(),
   imageId: z.string().min(1)
+});
+
+const reorderListingImagesBodySchema = z.object({
+  image_ids: z.array(z.string().min(1)).min(1)
+});
+
+const reorderListingImagesResponseSchema = z.object({
+  success: z.literal(true),
+  images: z.array(listingImageResultSchema)
 });
 
 const publishListingBodySchema = z.object({
@@ -553,6 +563,26 @@ registerApiRoute({
 });
 
 registerApiRoute({
+  method: 'patch',
+  path: '/api/listings/{id}/images/reorder',
+  summary: 'Reorder listing images',
+  description: 'Sets the display order of a listing\'s images based on the order of image ids provided.',
+  tags: ['Listings'],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: listingIdParamsSchema,
+    body: reorderListingImagesBodySchema
+  },
+  responses: {
+    200: { description: 'Images reordered successfully', schema: reorderListingImagesResponseSchema },
+    400: { description: 'Invalid listing id or request body', schema: simpleErrorResponseSchema },
+    401: { description: 'Unauthorized', schema: simpleErrorResponseSchema },
+    404: { description: 'Listing not found', schema: simpleErrorResponseSchema },
+    500: { description: 'Failed to reorder listing images', schema: genericErrorResponseSchema }
+  }
+});
+
+registerApiRoute({
   method: 'get',
   path: '/api/listings/{id}',
   summary: 'Get a private listing by ID',
@@ -741,6 +771,26 @@ router.post('/listings/:listingId/images/:imageId/confirm', checkAuth, (req, res
   }
 
   return confirmListingImageUpload(req, res, next);
+});
+router.patch('/listings/:id/images/reorder', checkAuth, (req, res, next) => {
+  const parsedParams = listingIdParamsSchema.safeParse(req.params);
+
+  if (!parsedParams.success) {
+    return res.status(400).json({ success: false, error: 'Invalid listing id' });
+  }
+
+  const parsedBody = reorderListingImagesBodySchema.safeParse(req.body);
+
+  if (!parsedBody.success) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid request body',
+      message: parsedBody.error.issues.map((issue) => issue.message).join(', ')
+    });
+  }
+
+  req.body = parsedBody.data;
+  return reorderListingImages(req, res, next);
 });
 router.get('/listings/:id', checkAuth, (req, res, next) => {
   const parsedParams = listingIdParamsSchema.safeParse(req.params);

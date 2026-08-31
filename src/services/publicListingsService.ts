@@ -82,7 +82,7 @@ function asListingImages(value: unknown): ListingImageRecord[] {
     : [];
 }
 
-async function attachPublicImageUrls(listings: ListingRecord[]): Promise<ListingRecord[]> {
+export async function attachPublicImageUrls(listings: ListingRecord[]): Promise<ListingRecord[]> {
   const bucketName = process.env.AWS_S3_BUCKET ?? 'property-images';
 
   return Promise.all(
