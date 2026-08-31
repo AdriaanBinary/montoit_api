@@ -5,6 +5,7 @@ import {
   confirmListingImageUpload,
   createListing,
   deleteListing,
+  deleteListingImage,
   getListingById,
   getPublicListingById,
   getListingOptions,
@@ -356,6 +357,10 @@ const simpleErrorResponseSchema = z.object({
   error: z.string()
 });
 
+const simpleSuccessResponseSchema = z.object({
+  success: z.literal(true)
+});
+
 const listingResponseSchema = z.object({
   success: z.literal(true),
   listing: listingResultSchema
@@ -581,6 +586,24 @@ registerApiRoute({
     500: { description: 'Failed to reorder listing images', schema: genericErrorResponseSchema }
   }
 });
+registerApiRoute({
+  method: 'delete',
+  path: '/api/listings/{listingId}/images/{imageId}',
+  summary: 'Delete a listing image',
+  description: 'Removes the image record and deletes the underlying object from S3.',
+  tags: ['Listings'],
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: listingImageParamsSchema
+  },
+  responses: {
+    200: { description: 'Image deleted successfully', schema: simpleSuccessResponseSchema },
+    400: { description: 'Invalid listing or image id', schema: simpleErrorResponseSchema },
+    401: { description: 'Unauthorized', schema: simpleErrorResponseSchema },
+    404: { description: 'Image or listing not found', schema: simpleErrorResponseSchema },
+    500: { description: 'Failed to delete listing image', schema: genericErrorResponseSchema }
+  }
+});
 
 registerApiRoute({
   method: 'get',
@@ -791,6 +814,15 @@ router.patch('/listings/:id/images/reorder', checkAuth, (req, res, next) => {
 
   req.body = parsedBody.data;
   return reorderListingImages(req, res, next);
+});
+router.delete('/listings/:listingId/images/:imageId', checkAuth, (req, res, next) => {
+  const parsedParams = listingImageParamsSchema.safeParse(req.params);
+
+  if (!parsedParams.success) {
+    return res.status(400).json({ success: false, error: 'Invalid listing or image id' });
+  }
+
+  return deleteListingImage(req, res, next);
 });
 router.get('/listings/:id', checkAuth, (req, res, next) => {
   const parsedParams = listingIdParamsSchema.safeParse(req.params);

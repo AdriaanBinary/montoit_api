@@ -1,4 +1,4 @@
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Request, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
@@ -197,6 +197,10 @@ async function objectExistsInS3(bucket: string, key: string): Promise<boolean> {
 
     throw error;
   }
+}
+
+async function deleteObjectFromS3(bucket: string, key: string): Promise<void> {
+  await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
 export function filterConfirmedImages(images: Array<{ id?: string; object_key?: string; upload_confirmed?: boolean }>) {
@@ -616,6 +620,53 @@ export const reorderListingImages: RequestHandler = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Failed to reorder listing images',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+export const deleteListingImage: RequestHandler = async (req, res) => {
+  const userId = (req as AuthenticatedRequest).user?.user_id;
+  const listingId = Number(req.params.listingId);
+  const imageId = req.params.imageId;
+
+  if (!userId) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  if (!Number.isInteger(listingId) || !imageId) {
+    return res.status(400).json({ success: false, error: 'Invalid listing or image id' });
+  }
+
+  try {
+    const listing = await listingsDb.getOwnedListingById(listingId, userId);
+
+    if (!listing) {
+      return res.status(404).json({ success: false, error: 'Listing not found' });
+    }
+
+    const existingImage = await listingsDb.getListingImageById(listingId, imageId);
+
+    if (!existingImage) {
+      return res.status(404).json({ success: false, error: 'Image not found' });
+    }
+
+    const bucketName = process.env.AWS_S3_BUCKET ?? 'property-images';
+
+    try {
+      await deleteObjectFromS3(bucketName, existingImage.object_key);
+    } catch (error: unknown) {
+      console.error('Failed to delete listing image from S3:', error);
+    }
+
+    await listingsDb.deleteListingImage(listingId, imageId);
+
+    return res.json({ success: true });
+  } catch (error: unknown) {
+    console.error('Delete listing image error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to delete listing image',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }

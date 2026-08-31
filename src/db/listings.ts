@@ -553,6 +553,17 @@ const listingsDb = {
     return toRecord(updated) as unknown as ListingImageRecord;
   },
 
+  deleteListingImage: async function(listingId: number, imageId: string): Promise<boolean> {
+    const deleted = await prisma.listingImage.deleteMany({
+      where: {
+        listing_id: listingId,
+        id: imageId
+      }
+    });
+
+    return deleted.count > 0;
+  },
+
   countPrivateListings: async function(userId: string): Promise<number> {
     const total = await prisma.listing.count({
       where: {
