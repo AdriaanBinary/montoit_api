@@ -27,6 +27,8 @@ model User {
   listingEnquiriesSubmitted   ListingEnquiry[] @relation("ListingEnquirySubmittedByUser")
   createdListings            Listing[]
   favoriteListings            UserFavorite[]
+  createdAgencies            Agency[]          @relation("AgencyCreator")
+  reviewedAgencies           Agency[]          @relation("AgencyReviewer")
 
   @@map("users")
 }
@@ -34,6 +36,7 @@ model User {
 enum UserRole {
   PRIVATE
   AGENT
+  ADMIN
 
   @@map("user_role")
 }
@@ -209,25 +212,71 @@ model UserFavorite {
 }
 
 model Agency {
-  id                 Int      @id @default(autoincrement())
-  name               String   @db.VarChar(160)
-  slug               String   @unique @db.VarChar(140)
-  description        String?  @db.Text
-  email              String?  @db.VarChar(255)
-  phone              String?  @db.VarChar(50)
-  website            String?  @db.Text
-  address_line1      String?  @db.Text
-  address_line2      String?  @db.Text
+  id                 Int          @id @default(autoincrement())
+  name               String       @db.VarChar(160)
+  slug               String       @unique @db.VarChar(140)
+  description        String?      @db.Text
+  email              String?      @db.VarChar(255)
+  phone              String?      @db.VarChar(50)
+  website            String?      @db.Text
+  address_line1      String?      @db.Text
+  address_line2      String?      @db.Text
   region_id          Int?
   city_id            Int?
   municipality_id    Int?
   neighborhood_id    Int?
-  created_by_user_id String   @db.VarChar(16)
-  is_active          Boolean  @default(true)
-  created_at         DateTime @default(now()) @db.Timestamptz(6)
-  updated_at         DateTime @default(now()) @db.Timestamptz(6)
+  created_by_user_id String       @db.VarChar(16)
+  status             AgencyStatus @default(DRAFT)
+  submitted_at       DateTime?    @db.Timestamptz(6)
+  reviewed_at        DateTime?    @db.Timestamptz(6)
+  reviewed_by_user_id String?     @db.VarChar(16)
+  review_note        String?      @db.Text
+  is_active          Boolean      @default(false)
+  created_at         DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime     @default(now()) @db.Timestamptz(6)
+
+  creator            User             @relation("AgencyCreator", fields: [created_by_user_id], references: [id])
+  reviewer           User?            @relation("AgencyReviewer", fields: [reviewed_by_user_id], references: [id])
+  documents          AgencyDocument[]
+
+  @@index([created_by_user_id])
+  @@index([status])
 
   @@map("agencies")
+}
+
+model AgencyDocument {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agency_id        Int
+  document_type    AgencyDocumentType
+  object_key       String             @db.Text
+  file_name        String             @db.VarChar(255)
+  content_type     String             @db.VarChar(100)
+  upload_confirmed Boolean            @default(false)
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
+
+  agency           Agency             @relation(fields: [agency_id], references: [id], onDelete: Cascade)
+
+  @@unique([agency_id, document_type], map: "unique_agency_document_type")
+  @@index([agency_id])
+  @@map("agency_documents")
+}
+
+enum AgencyStatus {
+  DRAFT
+  UNDER_REVIEW
+  ACTIVE
+  REJECTED
+
+  @@map("agency_status")
+}
+
+enum AgencyDocumentType {
+  BUSINESS_REGISTRATION
+  OWNER_ID
+
+  @@map("agency_document_type")
 }
 
 model AgencyAgent {
