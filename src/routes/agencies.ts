@@ -5,9 +5,16 @@ import {
 	confirmAgencyDocumentUpload,
 	createAgency,
 	getMyAgency,
+	getAgencyAgents,
+	getPendingAgencyInvitations,
 	getUnderReviewAgencies,
+	inviteAgencyAgent,
+	removeAgencyAgent,
 	reviewAgencyApplication,
+	respondToAgencyInvitation,
 	submitAgencyApplication,
+	transferAgencyListings,
+	updateAgentListingLimit,
 	uploadAgencyDocument
 } from '../services/agenciesService.js';
 import { checkAuth } from '../utils/authMiddleware.js';
@@ -43,6 +50,17 @@ const agencyReviewBodySchema = z.object({
 	decision: z.enum(['ACTIVE', 'REJECTED']),
 	review_note: z.string().max(4000).optional()
 });
+const agencyInvitationBodySchema = z.object({
+	email: z.string().email().optional(),
+	user_id: z.string().min(1).optional()
+}).refine((body) => Boolean(body.email) !== Boolean(body.user_id), 'Provide exactly one of email or user_id');
+const invitationIdParamsSchema = z.object({ id: z.string().uuid() });
+const agencyAgentParamsSchema = z.object({ id: z.coerce.number().int().positive(), userId: z.string().min(1) });
+const agentListingLimitBodySchema = z.object({ listing_limit: z.number().int().nonnegative().nullable() });
+const transferAgencyListingsBodySchema = z.object({
+	listing_ids: z.array(z.coerce.number().int().positive()).min(1),
+	target_user_id: z.string().min(1)
+});
 
 const agencyRecordSchema = z.record(z.string(), z.unknown());
 
@@ -73,6 +91,47 @@ registerApiRoute({
 		409: { description: 'Agency application already exists', schema: agencyErrorResponseSchema },
 		500: { description: 'Failed to create agency', schema: agencyErrorResponseSchema }
 	}
+});
+
+registerApiRoute({
+	method: 'post', path: '/api/agencies/{id}/invitations', summary: 'Invite a registered user to join an agency', tags: ['Agencies'], security: [{ bearerAuth: [] }],
+	request: { params: agencyIdParamsSchema, body: agencyInvitationBodySchema },
+	responses: { 201: { description: 'Invitation created', schema: z.object({ success: z.literal(true), invitation: agencyRecordSchema }) }, 400: { description: 'Invalid request', schema: agencyErrorResponseSchema }, 401: { description: 'Unauthorized', schema: agencyErrorResponseSchema }, 404: { description: 'Agency or user not found', schema: agencyErrorResponseSchema }, 409: { description: 'Agency inactive or user already belongs to an agency', schema: agencyErrorResponseSchema } }
+});
+
+registerApiRoute({
+	method: 'get', path: '/api/agencies/invitations/pending', summary: 'List the authenticated user pending agency invitations', tags: ['Agencies'], security: [{ bearerAuth: [] }],
+	responses: { 200: { description: 'Pending invitations', schema: z.object({ success: z.literal(true), invitations: z.array(agencyRecordSchema) }) }, 401: { description: 'Unauthorized', schema: agencyErrorResponseSchema } }
+});
+
+registerApiRoute({
+	method: 'post', path: '/api/agencies/invitations/{id}/accept', summary: 'Accept an agency invitation', tags: ['Agencies'], security: [{ bearerAuth: [] }], request: { params: invitationIdParamsSchema },
+	responses: { 200: { description: 'Invitation accepted', schema: z.object({ success: z.literal(true), invitation: agencyRecordSchema }) }, 401: { description: 'Unauthorized', schema: agencyErrorResponseSchema }, 404: { description: 'Pending invitation not found', schema: agencyErrorResponseSchema }, 409: { description: 'Already belongs to an agency', schema: agencyErrorResponseSchema } }
+});
+
+registerApiRoute({
+	method: 'post', path: '/api/agencies/invitations/{id}/decline', summary: 'Decline an agency invitation', tags: ['Agencies'], security: [{ bearerAuth: [] }], request: { params: invitationIdParamsSchema },
+	responses: { 200: { description: 'Invitation declined', schema: z.object({ success: z.literal(true), invitation: agencyRecordSchema }) }, 401: { description: 'Unauthorized', schema: agencyErrorResponseSchema }, 404: { description: 'Pending invitation not found', schema: agencyErrorResponseSchema } }
+});
+
+registerApiRoute({
+	method: 'get', path: '/api/agencies/{id}/agents', summary: 'List agency team members', tags: ['Agencies'], security: [{ bearerAuth: [] }], request: { params: agencyIdParamsSchema },
+	responses: { 200: { description: 'Agency agents', schema: z.object({ success: z.literal(true), agents: z.array(agencyRecordSchema) }) }, 401: { description: 'Unauthorized', schema: agencyErrorResponseSchema }, 404: { description: 'Agency not found', schema: agencyErrorResponseSchema } }
+});
+
+registerApiRoute({
+	method: 'patch', path: '/api/agencies/{id}/agents/{userId}/listing-limit', summary: 'Set an agent listing limit', tags: ['Agencies'], security: [{ bearerAuth: [] }], request: { params: agencyAgentParamsSchema, body: agentListingLimitBodySchema },
+	responses: { 200: { description: 'Listing limit updated', schema: z.object({ success: z.literal(true), agent: agencyRecordSchema }) }, 400: { description: 'Invalid request', schema: agencyErrorResponseSchema }, 401: { description: 'Unauthorized', schema: agencyErrorResponseSchema }, 404: { description: 'Agency or agent not found', schema: agencyErrorResponseSchema } }
+});
+
+registerApiRoute({
+	method: 'delete', path: '/api/agencies/{id}/agents/{userId}', summary: 'Remove an agency agent and reassign their listings to the owner', tags: ['Agencies'], security: [{ bearerAuth: [] }], request: { params: agencyAgentParamsSchema },
+	responses: { 200: { description: 'Agent removed', schema: z.object({ success: z.literal(true), reassigned_listing_count: z.number().int() }) }, 401: { description: 'Unauthorized', schema: agencyErrorResponseSchema }, 404: { description: 'Agency or removable agent not found', schema: agencyErrorResponseSchema } }
+});
+
+registerApiRoute({
+	method: 'post', path: '/api/agencies/{id}/listings/transfer', summary: 'Transfer selected agency listings to a team member', tags: ['Agencies'], security: [{ bearerAuth: [] }], request: { params: agencyIdParamsSchema, body: transferAgencyListingsBodySchema },
+	responses: { 200: { description: 'Listings transferred', schema: z.object({ success: z.literal(true), transferred_count: z.number().int() }) }, 400: { description: 'Invalid request', schema: agencyErrorResponseSchema }, 401: { description: 'Unauthorized', schema: agencyErrorResponseSchema }, 404: { description: 'Agency or target agent not found', schema: agencyErrorResponseSchema }, 409: { description: 'Target limit exceeded', schema: agencyErrorResponseSchema } }
 });
 
 registerApiRoute({
@@ -186,6 +245,58 @@ router.post('/agencies/:id/review', checkAuth, (req, res, next) => {
 	req.params = parsedParams.data as unknown as typeof req.params;
 	req.body = parsedBody.data;
 	return reviewAgencyApplication(req, res, next);
+});
+
+router.post('/agencies/:id/invitations', checkAuth, (req, res, next) => {
+	const params = agencyIdParamsSchema.safeParse(req.params);
+	const body = agencyInvitationBodySchema.safeParse(req.body);
+	if (!params.success || !body.success) return res.status(400).json({ success: false, error: 'Invalid request' });
+	req.params = params.data as unknown as typeof req.params;
+	req.body = body.data;
+	return inviteAgencyAgent(req, res, next);
+});
+
+router.get('/agencies/invitations/pending', checkAuth, getPendingAgencyInvitations);
+
+router.post('/agencies/invitations/:id/accept', checkAuth, (req, res, next) => {
+	const params = invitationIdParamsSchema.safeParse(req.params);
+	if (!params.success) return res.status(400).json({ success: false, error: 'Invalid request' });
+	req.params = params.data as unknown as typeof req.params;
+	return respondToAgencyInvitation(true)(req, res, next);
+});
+
+router.post('/agencies/invitations/:id/decline', checkAuth, (req, res, next) => {
+	const params = invitationIdParamsSchema.safeParse(req.params);
+	if (!params.success) return res.status(400).json({ success: false, error: 'Invalid request' });
+	req.params = params.data as unknown as typeof req.params;
+	return respondToAgencyInvitation(false)(req, res, next);
+});
+
+router.get('/agencies/:id/agents', checkAuth, getAgencyAgents);
+
+router.patch('/agencies/:id/agents/:userId/listing-limit', checkAuth, (req, res, next) => {
+	const params = agencyAgentParamsSchema.safeParse(req.params);
+	const body = agentListingLimitBodySchema.safeParse(req.body);
+	if (!params.success || !body.success) return res.status(400).json({ success: false, error: 'Invalid request' });
+	req.params = params.data as unknown as typeof req.params;
+	req.body = body.data;
+	return updateAgentListingLimit(req, res, next);
+});
+
+router.delete('/agencies/:id/agents/:userId', checkAuth, (req, res, next) => {
+	const params = agencyAgentParamsSchema.safeParse(req.params);
+	if (!params.success) return res.status(400).json({ success: false, error: 'Invalid request' });
+	req.params = params.data as unknown as typeof req.params;
+	return removeAgencyAgent(req, res, next);
+});
+
+router.post('/agencies/:id/listings/transfer', checkAuth, (req, res, next) => {
+	const params = agencyIdParamsSchema.safeParse(req.params);
+	const body = transferAgencyListingsBodySchema.safeParse(req.body);
+	if (!params.success || !body.success) return res.status(400).json({ success: false, error: 'Invalid request' });
+	req.params = params.data as unknown as typeof req.params;
+	req.body = body.data;
+	return transferAgencyListings(req, res, next);
 });
 
 export default router;

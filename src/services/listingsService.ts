@@ -21,6 +21,7 @@ import {
 } from '../db/listingOptions.js';
 import { LocationValidationError, validateListingLocationIds } from '../db/locations.js';
 import usersDb from '../db/users.js';
+import agenciesDb from '../db/agencies.js';
 import { AuthenticatedRequest } from '../utils/authMiddleware.js';
 import { attachPublicImageUrls } from './publicListingsService.js';
 
@@ -302,6 +303,27 @@ export const createListing: RequestHandler = async (req, res) => {
       });
     }
 
+    if (isAgentRole(userRole)) {
+      const membership = await agenciesDb.getAgencyMembership(userId);
+      const agency = membership?.agency as Record<string, unknown> | undefined;
+      const agencyId = typeof membership?.agency_id === 'number' ? membership.agency_id : null;
+      const listingLimit = typeof membership?.listing_limit === 'number' ? membership.listing_limit : null;
+
+      if (!agencyId || agency?.status !== 'ACTIVE') {
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden',
+          message: 'An active agency membership is required to create agent listings'
+        });
+      }
+
+      Object.assign(payload, {
+        agency_id: agencyId,
+        listing_owner_type: 'AGENT',
+        agent_listing_limit: listingLimit
+      });
+    }
+
     await validateListingOptionIds(payload.option_ids);
     await validateGeneralFeeIds(payload.general_fees);
     await validateListingLocationIds({
@@ -343,6 +365,13 @@ export const createListing: RequestHandler = async (req, res) => {
         error: 'Invalid general fees',
         message: error.message,
         fee_ids: error.feeIds
+      });
+    }
+
+    if (error instanceof Error && error.message === 'Agent listing limit reached') {
+      return res.status(409).json({
+        success: false,
+        error: 'Agent listing limit reached'
       });
     }
 

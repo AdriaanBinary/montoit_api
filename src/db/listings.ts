@@ -207,8 +207,7 @@ export interface ListingImageRecord {
 
 const listingsDb = {
   createListing: async function(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const created = await prisma.listing.create({
-      data: {
+    const data = {
         user_id: String(payload.user_id),
         title: asString(payload.title),
         description: asString(payload.description),
@@ -227,10 +226,24 @@ const listingsDb = {
         city_id: asInteger(payload.city_id),
         municipality_id: asInteger(payload.municipality_id),
         neighborhood_id: asInteger(payload.neighborhood_id),
-        verified: Boolean(payload.verified ?? false)
-      },
-      include: listingCreatorInclude
-    });
+        verified: Boolean(payload.verified ?? false),
+        listing_owner_type: payload.listing_owner_type === 'AGENT' ? 'AGENT' as const : 'PRIVATE' as const,
+        agency_id: asInteger(payload.agency_id)
+    };
+
+    const agencyId = asInteger(payload.agency_id);
+    const listingLimit = asInteger(payload.agent_listing_limit);
+    const created = agencyId !== null && listingLimit !== null
+      ? await prisma.$transaction(async (tx) => {
+          const existingCount = await tx.listing.count({
+            where: { agency_id: agencyId, user_id: String(payload.user_id), deleted_at: null }
+          });
+          if (existingCount >= listingLimit) {
+            throw new Error('Agent listing limit reached');
+          }
+          return tx.listing.create({ data, include: listingCreatorInclude });
+        }, { isolationLevel: 'Serializable' })
+      : await prisma.listing.create({ data, include: listingCreatorInclude });
 
     return attachListingLocationDetails(toRecord(created));
   },

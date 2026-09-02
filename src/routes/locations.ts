@@ -1,7 +1,7 @@
 import express from 'express';
 import { z } from 'zod';
 import { registerApiRoute } from '../docs/swagger.js';
-import { getLocationTree } from '../services/locationsService.js';
+import { getLocationTree, getLocationGeometryHandler } from '../services/locationsService.js';
 
 const router = express.Router();
 
@@ -54,5 +54,41 @@ registerApiRoute({
 });
 
 router.get('/locations/tree', getLocationTree);
+
+const locationGeometrySuccessResponseSchema = z.object({
+  success: z.literal(true),
+  type: z.enum(['region', 'city', 'municipality']),
+  id: z.number().int().positive(),
+  geometry: z.unknown()
+});
+
+const locationGeometryErrorResponseSchema = z.object({
+  success: z.literal(false),
+  error: z.string(),
+  message: z.string().optional()
+});
+
+registerApiRoute({
+  method: 'get',
+  path: '/api/locations/geometry',
+  summary: 'Get boundary geometry for a single region, city, or municipality',
+  description:
+    'Returns the GeoJSON geometry for one location, for on-demand map rendering. Not embedded in /locations/tree to keep that payload lean.',
+  tags: ['Locations'],
+  request: {
+    query: z.object({
+      type: z.enum(['region', 'city', 'municipality']),
+      id: z.coerce.number().int().positive()
+    })
+  },
+  responses: {
+    200: { description: 'Geometry returned', schema: locationGeometrySuccessResponseSchema },
+    400: { description: 'Invalid type or id', schema: locationGeometryErrorResponseSchema },
+    404: { description: 'Geometry not found', schema: locationGeometryErrorResponseSchema },
+    500: { description: 'Failed to fetch geometry', schema: locationGeometryErrorResponseSchema }
+  }
+});
+
+router.get('/locations/geometry', getLocationGeometryHandler);
 
 export default router;

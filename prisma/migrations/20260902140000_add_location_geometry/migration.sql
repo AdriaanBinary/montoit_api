@@ -1,0 +1,8 @@
+ALTER TABLE "regions"
+  ADD COLUMN IF NOT EXISTS "geometry" JSONB;
+
+ALTER TABLE "cities"
+  ADD COLUMN IF NOT EXISTS "geometry" JSONB;
+
+ALTER TABLE "municipalities"
+  ADD COLUMN IF NOT EXISTS "geometry" JSONB;

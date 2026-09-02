@@ -37,6 +37,20 @@ interface AgencyReviewRequestBody {
   review_note?: string;
 }
 
+interface AgencyInvitationRequestBody {
+  email?: string;
+  user_id?: string;
+}
+
+interface AgentListingLimitRequestBody {
+  listing_limit?: number | null;
+}
+
+interface TransferAgencyListingsRequestBody {
+  listing_ids?: number[];
+  target_user_id?: string;
+}
+
 const requiredDocumentTypes = ['BUSINESS_REGISTRATION', 'OWNER_ID'] as const;
 const s3Client = new S3Client({
   forcePathStyle: true,
@@ -326,6 +340,103 @@ export const reviewAgencyApplication: RequestHandler = async (req, res) => {
   const agency = await agenciesDb.reviewAgencyApplication(agencyId, userId, body.decision, body.review_note?.trim() || null);
   if (!agency) return res.status(409).json({ success: false, error: 'Only under-review applications can be reviewed' });
   return res.json({ success: true, agency });
+};
+
+export const inviteAgencyAgent: RequestHandler = async (req, res) => {
+  const ownerUserId = (req as AuthenticatedRequest).user?.user_id;
+  const agencyId = Number(req.params.id);
+  const body = (req.body ?? {}) as AgencyInvitationRequestBody;
+  if (!ownerUserId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+  if (!Number.isInteger(agencyId)) return res.status(400).json({ success: false, error: 'Invalid agency id' });
+  if ((!body.email?.trim() && !body.user_id?.trim()) || (body.email?.trim() && body.user_id?.trim())) {
+    return res.status(400).json({ success: false, error: 'Provide exactly one of email or user_id' });
+  }
+
+  const agency = await agenciesDb.getOwnedAgencyById(agencyId, ownerUserId);
+  if (!agency) return res.status(404).json({ success: false, error: 'Agency application not found' });
+  if (agency.status !== 'ACTIVE') return res.status(409).json({ success: false, error: 'Only active agencies can invite agents' });
+
+  const invitedUser = await agenciesDb.findUserForInvitation({ email: body.email?.trim(), userId: body.user_id?.trim() });
+  if (!invitedUser) return res.status(404).json({ success: false, error: 'Registered user not found' });
+  if (invitedUser.id === ownerUserId) return res.status(400).json({ success: false, error: 'Agency owner is already a member' });
+  if (await agenciesDb.getAgencyMembership(String(invitedUser.id))) {
+    return res.status(409).json({ success: false, error: 'User already belongs to an agency' });
+  }
+
+  const invitation = await agenciesDb.createAgencyInvitation(agencyId, String(invitedUser.id), ownerUserId);
+  return res.status(201).json({ success: true, invitation });
+};
+
+export const getPendingAgencyInvitations: RequestHandler = async (req, res) => {
+  const userId = (req as AuthenticatedRequest).user?.user_id;
+  if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+  return res.json({ success: true, invitations: await agenciesDb.getPendingInvitations(userId) });
+};
+
+export const respondToAgencyInvitation = (accept: boolean): RequestHandler => async (req, res) => {
+  const userId = (req as AuthenticatedRequest).user?.user_id;
+  const invitationId = req.params.id;
+  if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+  if (!invitationId) return res.status(400).json({ success: false, error: 'Invalid invitation id' });
+  try {
+    const invitation = await agenciesDb.respondToInvitation(invitationId, userId, accept);
+    if (!invitation) return res.status(404).json({ success: false, error: 'Pending invitation not found' });
+    return res.json({ success: true, invitation });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return res.status(message.includes('already belongs') ? 409 : 500).json({ success: false, error: accept ? 'Failed to accept invitation' : 'Failed to decline invitation', message });
+  }
+};
+
+export const getAgencyAgents: RequestHandler = async (req, res) => {
+  const ownerUserId = (req as AuthenticatedRequest).user?.user_id;
+  const agencyId = Number(req.params.id);
+  if (!ownerUserId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+  if (!Number.isInteger(agencyId)) return res.status(400).json({ success: false, error: 'Invalid agency id' });
+  if (!await agenciesDb.getOwnedAgencyById(agencyId, ownerUserId)) return res.status(404).json({ success: false, error: 'Agency application not found' });
+  return res.json({ success: true, agents: await agenciesDb.getAgencyAgents(agencyId) });
+};
+
+export const updateAgentListingLimit: RequestHandler = async (req, res) => {
+  const ownerUserId = (req as AuthenticatedRequest).user?.user_id;
+  const agencyId = Number(req.params.id);
+  const agentUserId = req.params.userId;
+  const body = (req.body ?? {}) as AgentListingLimitRequestBody;
+  if (!ownerUserId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+  if (!Number.isInteger(agencyId) || !agentUserId) return res.status(400).json({ success: false, error: 'Invalid agency or agent id' });
+  if (body.listing_limit !== null && (!Number.isInteger(body.listing_limit) || (body.listing_limit as number) < 0)) return res.status(400).json({ success: false, error: 'listing_limit must be a non-negative integer or null' });
+  if (!await agenciesDb.getOwnedAgencyById(agencyId, ownerUserId)) return res.status(404).json({ success: false, error: 'Agency application not found' });
+  const agent = await agenciesDb.setAgentListingLimit(agencyId, agentUserId, body.listing_limit ?? null);
+  if (!agent) return res.status(404).json({ success: false, error: 'Agent not found or is the agency owner' });
+  return res.json({ success: true, agent });
+};
+
+export const transferAgencyListings: RequestHandler = async (req, res) => {
+  const ownerUserId = (req as AuthenticatedRequest).user?.user_id;
+  const agencyId = Number(req.params.id);
+  const body = (req.body ?? {}) as TransferAgencyListingsRequestBody;
+  const listingIds = Array.isArray(body.listing_ids) ? [...new Set(body.listing_ids)] : [];
+  if (!ownerUserId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+  if (!Number.isInteger(agencyId) || !body.target_user_id?.trim() || listingIds.length === 0 || listingIds.some((id) => !Number.isInteger(id) || id < 1)) return res.status(400).json({ success: false, error: 'Valid listing_ids and target_user_id are required' });
+  try {
+    const transferredCount = await agenciesDb.transferAgencyListings(agencyId, ownerUserId, listingIds, body.target_user_id.trim());
+    return res.json({ success: true, transferred_count: transferredCount });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    const status = message.includes('not found') ? 404 : message.includes('limit') || message.includes('cannot') ? 409 : 500;
+    return res.status(status).json({ success: false, error: 'Failed to transfer listings', message });
+  }
+};
+
+export const removeAgencyAgent: RequestHandler = async (req, res) => {
+  const ownerUserId = (req as AuthenticatedRequest).user?.user_id;
+  const agencyId = Number(req.params.id);
+  const agentUserId = req.params.userId;
+  if (!ownerUserId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+  if (!Number.isInteger(agencyId) || !agentUserId) return res.status(400).json({ success: false, error: 'Invalid agency or agent id' });
+  const reassignedCount = await agenciesDb.removeAgencyAgent(agencyId, ownerUserId, agentUserId);
+  if (reassignedCount === null) return res.status(404).json({ success: false, error: 'Agent not found or is the agency owner' });
+  return res.json({ success: true, reassigned_listing_count: reassignedCount });
 };
 
 export const convertUserToAgent: RequestHandler = async (req, res) => {
