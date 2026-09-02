@@ -267,6 +267,9 @@ async function main(): Promise<void> {
         neighborhood.aliases
       );
     }
+  }, {
+    maxWait: 30000,
+    timeout: 120000
   });
 
   console.log(
