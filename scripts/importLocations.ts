@@ -226,47 +226,58 @@ async function main(): Promise<void> {
   await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe('TRUNCATE TABLE regions, cities, municipalities, neighborhoods RESTART IDENTITY CASCADE');
 
-    for (const region of regions) {
-      await tx.$executeRawUnsafe(
-        'INSERT INTO regions (id, name, geometry) VALUES ($1, $2, $3::jsonb)',
-        region.id,
-        region.name,
-        JSON.stringify(region.geometry)
-      );
-    }
+    const regionsParameters: unknown[] = [];
+    const regionValues = regions.map((region, index) => {
+      const offset = index * 3;
+      regionsParameters.push(region.id, region.name, JSON.stringify(region.geometry));
+      return `($${offset + 1}, $${offset + 2}, $${offset + 3}::jsonb)`;
+    });
+    await tx.$executeRawUnsafe(
+      `INSERT INTO regions (id, name, geometry) VALUES ${regionValues.join(', ')}`,
+      ...regionsParameters
+    );
 
-    for (const city of cities) {
-      await tx.$executeRawUnsafe(
-        'INSERT INTO cities (id, region_id, name, geometry) VALUES ($1, $2, $3, $4::jsonb)',
-        city.id,
-        city.regionId,
-        city.name,
-        JSON.stringify(city.geometry)
-      );
-    }
+    const citiesParameters: unknown[] = [];
+    const cityValues = cities.map((city, index) => {
+      const offset = index * 4;
+      citiesParameters.push(city.id, city.regionId, city.name, JSON.stringify(city.geometry));
+      return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}::jsonb)`;
+    });
+    await tx.$executeRawUnsafe(
+      `INSERT INTO cities (id, region_id, name, geometry) VALUES ${cityValues.join(', ')}`,
+      ...citiesParameters
+    );
 
-    for (const municipality of municipalities) {
-      await tx.$executeRawUnsafe(
-        'INSERT INTO municipalities (id, city_id, name, geometry) VALUES ($1, $2, $3, $4::jsonb)',
+    const municipalitiesParameters: unknown[] = [];
+    const municipalityValues = municipalities.map((municipality, index) => {
+      const offset = index * 4;
+      municipalitiesParameters.push(
         municipality.id,
         municipality.cityId,
         municipality.name,
         JSON.stringify(municipality.geometry)
       );
-    }
+      return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}::jsonb)`;
+    });
+    await tx.$executeRawUnsafe(
+      `INSERT INTO municipalities (id, city_id, name, geometry) VALUES ${municipalityValues.join(', ')}`,
+      ...municipalitiesParameters
+    );
 
-    for (const neighborhood of NEIGHBORHOOD_SEED) {
+    const neighborhoodsToInsert = NEIGHBORHOOD_SEED.flatMap((neighborhood) => {
       const municipalityId = municipalityIdByName.get(neighborhood.municipalityName);
-      if (!municipalityId) {
-        continue;
-      }
-      await tx.$executeRawUnsafe(
-        'INSERT INTO neighborhoods (municipality_id, name, aliases) VALUES ($1, $2, $3)',
-        municipalityId,
-        neighborhood.name,
-        neighborhood.aliases
-      );
-    }
+      return municipalityId ? [{ ...neighborhood, municipalityId }] : [];
+    });
+    const neighborhoodsParameters: unknown[] = [];
+    const neighborhoodValues = neighborhoodsToInsert.map((neighborhood, index) => {
+      const offset = index * 3;
+      neighborhoodsParameters.push(neighborhood.municipalityId, neighborhood.name, neighborhood.aliases);
+      return `($${offset + 1}, $${offset + 2}, $${offset + 3}::text[])`;
+    });
+    await tx.$executeRawUnsafe(
+      `INSERT INTO neighborhoods (municipality_id, name, aliases) VALUES ${neighborhoodValues.join(', ')}`,
+      ...neighborhoodsParameters
+    );
   }, {
     maxWait: 30000,
     timeout: 120000
