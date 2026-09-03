@@ -66,14 +66,14 @@ test('builds public listing filters with repeated location ids', () => {
 test('limits commercial mode to commercial sale properties', () => {
   const where = buildPublicListingsWhere({ mode: 'commercial' });
 
-  assert.equal(where.listing_type, 'sale');
+  assert.equal(where.listing_type, 'SALE');
   assert.deepEqual(where.property_type, { in: ['COMMERCIAL', 'INDUSTRIAL'] });
 });
 
 test('excludes commercial properties from buy mode', () => {
   const where = buildPublicListingsWhere({ mode: 'buy' });
 
-  assert.equal(where.listing_type, 'sale');
+  assert.equal(where.listing_type, 'SALE');
   assert.deepEqual(where.property_type, { notIn: ['COMMERCIAL', 'INDUSTRIAL'] });
 });
 

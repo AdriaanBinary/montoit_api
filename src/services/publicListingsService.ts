@@ -298,11 +298,11 @@ export function buildPublicListingsWhere(query: PublicListingsRequestQuery): Lis
   };
 
   if (mode === 'buy' || mode === 'commercial') {
-    where.listing_type = 'sale';
+    where.listing_type = 'SALE';
   } else if (mode === 'rent') {
-    where.listing_type = 'rent';
+    where.listing_type = 'RENT';
   } else if (query.listing_type) {
-    where.listing_type = query.listing_type.toLowerCase();
+    where.listing_type = query.listing_type.toUpperCase();
   }
 
   const andFilters: ListingWhere[] = [];
