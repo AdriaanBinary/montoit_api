@@ -173,6 +173,7 @@ const multiValuePositiveIntQueryParam = z
   .optional();
 
 export const publicListingsQuerySchema = z.object({
+  mode: z.enum(['buy', 'rent', 'commercial']).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   q: z.string().trim().min(1).optional(),

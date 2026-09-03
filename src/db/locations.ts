@@ -34,6 +34,7 @@ export interface LocationRegion {
 }
 
 let initializationPromise: Promise<void> | null = null;
+let locationHierarchyTreeCache: LocationRegion[] | null = null;
 
 async function createLocationTables(): Promise<void> {
   await prisma.$executeRawUnsafe(`
@@ -161,6 +162,10 @@ export async function validateListingLocationIds(locationIds: ListingLocationIds
 }
 
 export async function getLocationHierarchyTree(): Promise<LocationRegion[]> {
+  if (locationHierarchyTreeCache) {
+    return locationHierarchyTreeCache;
+  }
+
   await ensureCameroonLocationDataInitialized();
 
   const rows = await prisma.$queryRawUnsafe<
@@ -248,7 +253,8 @@ export async function getLocationHierarchyTree(): Promise<LocationRegion[]> {
     });
   }
 
-  return Array.from(regionsById.values());
+  locationHierarchyTreeCache = Array.from(regionsById.values());
+  return locationHierarchyTreeCache;
 }
 
 export type LocationGeometryType = 'region' | 'city' | 'municipality';

@@ -63,6 +63,20 @@ test('builds public listing filters with repeated location ids', () => {
   ]);
 });
 
+test('limits commercial mode to commercial sale properties', () => {
+  const where = buildPublicListingsWhere({ mode: 'commercial' });
+
+  assert.equal(where.listing_type, 'sale');
+  assert.deepEqual(where.property_type, { in: ['COMMERCIAL', 'INDUSTRIAL'] });
+});
+
+test('excludes commercial properties from buy mode', () => {
+  const where = buildPublicListingsWhere({ mode: 'buy' });
+
+  assert.equal(where.listing_type, 'sale');
+  assert.deepEqual(where.property_type, { notIn: ['COMMERCIAL', 'INDUSTRIAL'] });
+});
+
 test('rejects invalid location ids in the public listings query schema', () => {
   const parsed = publicListingsQuerySchema.safeParse({ region_id: ['1', 'bad-value'] });
 

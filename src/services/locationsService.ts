@@ -4,6 +4,7 @@ import { getLocationGeometries, getLocationHierarchyTree, getLocationGeometry, L
 export const getLocationTree: RequestHandler = async (_req, res) => {
   try {
     const regions = await getLocationHierarchyTree();
+    res.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
 
     return res.json({
       success: true,

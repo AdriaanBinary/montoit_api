@@ -6,6 +6,8 @@ import { addListingOptions } from '../db/listingOptions.js';
 import { addListingGeneralFees } from '../db/generalFees.js';
 
 interface PublicListingsRequestQuery {
+  mode?: 'buy' | 'rent' | 'commercial' | string;
+  listing_type?: 'sale' | 'rent' | string;
   page?: string | number;
   limit?: string | number;
   q?: string;
@@ -265,6 +267,7 @@ function toSortBy(sortBy: PublicListingsRequestQuery['sortBy']): ListingOrderBy 
 export function buildPublicListingsWhere(query: PublicListingsRequestQuery): ListingWhere {
   const q = query.q?.trim();
   const propertyTypes = toPropertyTypes(query.propertyType);
+  const mode = query.mode?.trim().toLowerCase();
   const minPrice = toOptionalNumber(query.minPrice);
   const maxPrice = toOptionalNumber(query.maxPrice);
   const bedrooms = toParsedBedrooms(query.bedrooms);
@@ -293,6 +296,14 @@ export function buildPublicListingsWhere(query: PublicListingsRequestQuery): Lis
     is_published: true,
     deleted_at: null
   };
+
+  if (mode === 'buy' || mode === 'commercial') {
+    where.listing_type = 'sale';
+  } else if (mode === 'rent') {
+    where.listing_type = 'rent';
+  } else if (query.listing_type) {
+    where.listing_type = query.listing_type.toLowerCase();
+  }
 
   const andFilters: ListingWhere[] = [];
 
@@ -332,7 +343,16 @@ export function buildPublicListingsWhere(query: PublicListingsRequestQuery): Lis
     andFilters.push({ OR: locationFilters });
   }
 
-  if (propertyTypes.length > 0) {
+  if (mode === 'commercial') {
+    where.property_type = { in: ['COMMERCIAL', 'INDUSTRIAL'] };
+  } else if (mode === 'buy') {
+    const salePropertyTypes = propertyTypes
+      .map(toStoredPropertyType)
+      .filter((type) => !['COMMERCIAL', 'INDUSTRIAL'].includes(type));
+    where.property_type = salePropertyTypes.length > 0
+      ? { in: salePropertyTypes }
+      : { notIn: ['COMMERCIAL', 'INDUSTRIAL'] };
+  } else if (propertyTypes.length > 0) {
     where.property_type = { in: propertyTypes.map(toStoredPropertyType) };
   }
 
