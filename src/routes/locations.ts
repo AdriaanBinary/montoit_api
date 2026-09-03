@@ -62,6 +62,16 @@ const locationGeometrySuccessResponseSchema = z.object({
   geometry: z.unknown()
 });
 
+const locationGeometriesSuccessResponseSchema = z.object({
+  success: z.literal(true),
+  type: z.enum(['region', 'city', 'municipality']),
+  geometries: z.array(z.object({
+    id: z.number().int().positive(),
+    name: z.string(),
+    geometry: z.unknown()
+  }))
+});
+
 const locationGeometryErrorResponseSchema = z.object({
   success: z.literal(false),
   error: z.string(),
@@ -71,18 +81,18 @@ const locationGeometryErrorResponseSchema = z.object({
 registerApiRoute({
   method: 'get',
   path: '/api/locations/geometry',
-  summary: 'Get boundary geometry for a single region, city, or municipality',
+  summary: 'Get boundary geometry for locations',
   description:
     'Returns the GeoJSON geometry for one location, for on-demand map rendering. Not embedded in /locations/tree to keep that payload lean.',
   tags: ['Locations'],
   request: {
     query: z.object({
       type: z.enum(['region', 'city', 'municipality']),
-      id: z.coerce.number().int().positive()
+      id: z.coerce.number().int().positive().optional()
     })
   },
   responses: {
-    200: { description: 'Geometry returned', schema: locationGeometrySuccessResponseSchema },
+    200: { description: 'Geometry returned', schema: z.union([locationGeometrySuccessResponseSchema, locationGeometriesSuccessResponseSchema]) },
     400: { description: 'Invalid type or id', schema: locationGeometryErrorResponseSchema },
     404: { description: 'Geometry not found', schema: locationGeometryErrorResponseSchema },
     500: { description: 'Failed to fetch geometry', schema: locationGeometryErrorResponseSchema }

@@ -1,5 +1,5 @@
 import { RequestHandler } from 'express';
-import { getLocationHierarchyTree, getLocationGeometry, LocationGeometryType } from '../db/locations.js';
+import { getLocationGeometries, getLocationHierarchyTree, getLocationGeometry, LocationGeometryType } from '../db/locations.js';
 
 export const getLocationTree: RequestHandler = async (_req, res) => {
   try {
@@ -24,6 +24,7 @@ const VALID_GEOMETRY_TYPES: LocationGeometryType[] = ['region', 'city', 'municip
 export const getLocationGeometryHandler: RequestHandler = async (req, res) => {
   try {
     const type = String(req.query.type);
+    const hasId = req.query.id !== undefined;
     const id = Number(req.query.id);
 
     if (!VALID_GEOMETRY_TYPES.includes(type as LocationGeometryType)) {
@@ -33,11 +34,16 @@ export const getLocationGeometryHandler: RequestHandler = async (req, res) => {
       });
     }
 
-    if (!Number.isInteger(id) || id <= 0) {
+    if (hasId && (!Number.isInteger(id) || id <= 0)) {
       return res.status(400).json({
         success: false,
         error: 'Invalid id. Must be a positive integer'
       });
+    }
+
+    if (!hasId) {
+      const geometries = await getLocationGeometries(type as LocationGeometryType);
+      return res.json({ success: true, type, geometries });
     }
 
     const geometry = await getLocationGeometry(type as LocationGeometryType, id);

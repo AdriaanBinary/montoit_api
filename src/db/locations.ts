@@ -273,3 +273,22 @@ export async function getLocationGeometry(
 
   return rows[0]?.geometry ?? null;
 }
+
+export interface LocationGeometryFeature {
+  id: number;
+  name: string;
+  geometry: unknown;
+}
+
+export async function getLocationGeometries(
+  type: LocationGeometryType
+): Promise<LocationGeometryFeature[]> {
+  await ensureCameroonLocationDataInitialized();
+
+  const table = LOCATION_GEOMETRY_TABLE_BY_TYPE[type];
+  const rows = await prisma.$queryRawUnsafe<LocationGeometryFeature[]>(
+    `SELECT id, name, geometry FROM ${table} WHERE geometry IS NOT NULL ORDER BY name`
+  );
+
+  return rows;
+}
