@@ -393,8 +393,16 @@ export const getAgencyAgents: RequestHandler = async (req, res) => {
   const agencyId = Number(req.params.id);
   if (!ownerUserId) return res.status(401).json({ success: false, error: 'Unauthorized' });
   if (!Number.isInteger(agencyId)) return res.status(400).json({ success: false, error: 'Invalid agency id' });
-  if (!await agenciesDb.getOwnedAgencyById(agencyId, ownerUserId)) return res.status(404).json({ success: false, error: 'Agency application not found' });
-  return res.json({ success: true, agents: await agenciesDb.getAgencyAgents(agencyId) });
+  try {
+    if (!await agenciesDb.getOwnedAgencyById(agencyId, ownerUserId)) {
+      return res.status(404).json({ success: false, error: 'Agency application not found' });
+    }
+    return res.json({ success: true, agents: await agenciesDb.getAgencyAgents(agencyId) });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Failed to load agency agents:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load agency agents', message });
+  }
 };
 
 export const updateAgentListingLimit: RequestHandler = async (req, res) => {
