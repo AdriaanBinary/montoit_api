@@ -277,7 +277,21 @@ export function normalizeCreateListingInput(input: Partial<ListingCreateInput>, 
 }
 
 export function isAgentRole(role: unknown): boolean {
-  return role === 'AGENT';
+  return role === 'AGENT' || role === 'AGENCY_OWNER';
+}
+
+async function getManagedAgencyId(userId: string): Promise<number | undefined> {
+  const agency = await agenciesDb.getOwnedAgency(userId);
+  return agency?.status === 'ACTIVE' && typeof agency.id === 'number' ? agency.id : undefined;
+}
+
+async function getListingManagementContext(listing: Record<string, unknown>, userId: string): Promise<number | null | undefined> {
+  if (String(listing.user_id) === userId) return undefined;
+
+  const agencyId = await getManagedAgencyId(userId);
+  if (agencyId !== undefined && Number(listing.agency_id) === agencyId) return agencyId;
+
+  return null;
 }
 
 export function requiresAgentForPropertyType(propertyType: unknown): boolean {
@@ -295,6 +309,8 @@ export const createListing: RequestHandler = async (req, res) => {
     const userRole = await usersDb.getUserRole(userId);
     const payload = normalizeCreateListingInput(req.body as Partial<ListingCreateInput>, userId);
 
+    const agencyId = await getManagedAgencyId(userId);
+
     if (requiresAgentForPropertyType(payload.property_type) && !isAgentRole(userRole)) {
       return res.status(403).json({
         success: false,
@@ -306,10 +322,10 @@ export const createListing: RequestHandler = async (req, res) => {
     if (isAgentRole(userRole)) {
       const membership = await agenciesDb.getAgencyMembership(userId);
       const agency = membership?.agency as Record<string, unknown> | undefined;
-      const agencyId = typeof membership?.agency_id === 'number' ? membership.agency_id : null;
+      const listingAgencyId = typeof membership?.agency_id === 'number' ? membership.agency_id : null;
       const listingLimit = typeof membership?.listing_limit === 'number' ? membership.listing_limit : null;
 
-      if (!agencyId || agency?.status !== 'ACTIVE') {
+      if (!listingAgencyId || agency?.status !== 'ACTIVE') {
         return res.status(403).json({
           success: false,
           error: 'Forbidden',
@@ -318,9 +334,9 @@ export const createListing: RequestHandler = async (req, res) => {
       }
 
       Object.assign(payload, {
-        agency_id: agencyId,
+        agency_id: listingAgencyId,
         listing_owner_type: 'AGENT',
-        agent_listing_limit: listingLimit
+        agent_listing_limit: userRole === 'AGENCY_OWNER' ? null : listingLimit
       });
     }
 
@@ -398,10 +414,15 @@ export const publishListing: RequestHandler = async (req, res) => {
   }
 
   try {
-    const listing = await listingsDb.getOwnedListingById(listingId, userId);
+    const listing = await listingsDb.getListingById(listingId);
 
     if (!listing) {
       return res.status(404).json({ success: false, error: 'Listing not found' });
+    }
+
+    const managementAgencyId = await getListingManagementContext(listing, userId);
+    if (managementAgencyId === null) {
+      return res.status(403).json({ success: false, error: 'Forbidden', message: 'You cannot publish this listing' });
     }
 
     const rightsValidation = validateRightsConfirmation(body.rights_confirmed);
@@ -425,7 +446,7 @@ export const publishListing: RequestHandler = async (req, res) => {
       });
     }
 
-    const updatedListing = await listingsDb.publishListing(listingId, userId);
+    const updatedListing = await listingsDb.publishListing(listingId, userId, managementAgencyId);
 
     if (!updatedListing) {
       return res.status(404).json({ success: false, error: 'Listing not found' });
@@ -458,13 +479,18 @@ export const unpublishListing: RequestHandler = async (req, res) => {
   }
 
   try {
-    const listing = await listingsDb.getOwnedListingById(listingId, userId);
+    const listing = await listingsDb.getListingById(listingId);
 
     if (!listing) {
       return res.status(404).json({ success: false, error: 'Listing not found' });
     }
 
-    const updatedListing = await listingsDb.unpublishListing(listingId, userId);
+    const managementAgencyId = await getListingManagementContext(listing, userId);
+    if (managementAgencyId === null) {
+      return res.status(403).json({ success: false, error: 'Forbidden', message: 'You cannot unpublish this listing' });
+    }
+
+    const updatedListing = await listingsDb.unpublishListing(listingId, userId, managementAgencyId);
 
     if (!updatedListing) {
       return res.status(404).json({ success: false, error: 'Listing not found' });
@@ -498,7 +524,7 @@ export const uploadListingImages: RequestHandler = async (req, res) => {
   }
 
   try {
-    const listing = await listingsDb.getOwnedListingById(listingId, userId);
+    const listing = await listingsDb.getOwnedListingById(listingId, userId, await getManagedAgencyId(userId));
 
     if (!listing) {
       return res.status(404).json({ success: false, error: 'Listing not found' });
@@ -567,7 +593,7 @@ export const confirmListingImageUpload: RequestHandler = async (req, res) => {
   }
 
   try {
-    const listing = await listingsDb.getOwnedListingById(listingId, userId);
+    const listing = await listingsDb.getOwnedListingById(listingId, userId, await getManagedAgencyId(userId));
 
     if (!listing) {
       return res.status(404).json({ success: false, error: 'Listing not found' });
@@ -623,7 +649,7 @@ export const reorderListingImages: RequestHandler = async (req, res) => {
   }
 
   try {
-    const listing = await listingsDb.getOwnedListingById(listingId, userId);
+    const listing = await listingsDb.getOwnedListingById(listingId, userId, await getManagedAgencyId(userId));
 
     if (!listing) {
       return res.status(404).json({ success: false, error: 'Listing not found' });
@@ -668,7 +694,7 @@ export const deleteListingImage: RequestHandler = async (req, res) => {
   }
 
   try {
-    const listing = await listingsDb.getOwnedListingById(listingId, userId);
+    const listing = await listingsDb.getOwnedListingById(listingId, userId, await getManagedAgencyId(userId));
 
     if (!listing) {
       return res.status(404).json({ success: false, error: 'Listing not found' });
@@ -714,7 +740,7 @@ export const getListingById: RequestHandler = async (req, res) => {
   }
 
   try {
-    const listing = await listingsDb.getOwnedListingById(listingId, userId);
+    const listing = await listingsDb.getOwnedListingById(listingId, userId, await getManagedAgencyId(userId));
 
     if (!listing) {
       return res.status(404).json({ success: false, error: 'Listing not found' });
@@ -879,11 +905,12 @@ export const updateListing: RequestHandler = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Listing not found' });
     }
 
-    if (String(listing.user_id) !== userId) {
+    const managementAgencyId = await getListingManagementContext(listing, userId);
+    if (managementAgencyId === null) {
       return res.status(403).json({
         success: false,
         error: 'Forbidden',
-        message: 'You can only modify your own listings'
+        message: 'You can only modify listings owned by you or your agency'
       });
     }
 
@@ -910,7 +937,7 @@ export const updateListing: RequestHandler = async (req, res) => {
       await validateListingOptionIds(body.option_ids);
     }
 
-    const updatedListing = await listingsDb.updateOwnedListing(listingId, userId, body as Record<string, unknown>);
+    const updatedListing = await listingsDb.updateOwnedListing(listingId, userId, body as Record<string, unknown>, managementAgencyId);
 
     if (!updatedListing) {
       return res.status(404).json({ success: false, error: 'Listing not found' });
@@ -1003,15 +1030,16 @@ export const deleteListing: RequestHandler = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Listing not found' });
     }
 
-    if (String(listing.user_id) !== userId) {
+    const managementAgencyId = await getListingManagementContext(listing, userId);
+    if (managementAgencyId === null) {
       return res.status(403).json({
         success: false,
         error: 'Forbidden',
-        message: 'You can only archive your own listings'
+        message: 'You can only archive listings owned by you or your agency'
       });
     }
 
-    const archivedListing = await listingsDb.archiveOwnedListing(listingId, userId);
+    const archivedListing = await listingsDb.archiveOwnedListing(listingId, userId, managementAgencyId);
 
     if (!archivedListing) {
       return res.status(404).json({ success: false, error: 'Listing not found' });
@@ -1045,12 +1073,13 @@ export const getPrivateListings: RequestHandler = async (req, res) => {
   const itemsPerPage = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 20;
 
   try {
-    const totalItems = await listingsDb.countPrivateListings(userId);
+    const agencyId = await getManagedAgencyId(userId);
+    const totalItems = await listingsDb.countPrivateListings(userId, agencyId);
     const pages = totalItems === 0 ? 1 : Math.ceil(totalItems / itemsPerPage);
     const safePage = Math.min(currentPage, pages);
     const safeOffset = (safePage - 1) * itemsPerPage;
 
-    const privateListings = await listingsDb.getPrivateListings(userId, itemsPerPage, safeOffset);
+    const privateListings = await listingsDb.getPrivateListings(userId, itemsPerPage, safeOffset, agencyId);
     const listingsWithDetails = await Promise.all(
       privateListings.map(async (listing) => addListingGeneralFees(await addListingOptions(listing)))
     );

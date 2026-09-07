@@ -187,6 +187,11 @@ const agenciesDb = {
         }
       });
 
+      await tx.user.update({
+        where: { id: payload.created_by_user_id },
+        data: { role: 'AGENCY_OWNER', updated_at: new Date() }
+      });
+
       return agency;
     });
 

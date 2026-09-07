@@ -248,11 +248,11 @@ const listingsDb = {
     return attachListingLocationDetails(toRecord(created));
   },
 
-  publishListing: async function(listingId: number, userId: string): Promise<Record<string, unknown> | null> {
+  publishListing: async function(listingId: number, userId: string, agencyId?: number): Promise<Record<string, unknown> | null> {
     const existing = await prisma.listing.findFirst({
       where: {
         id: listingId,
-        user_id: userId,
+        OR: agencyId ? [{ user_id: userId }, { agency_id: agencyId }] : [{ user_id: userId }],
         deleted_at: null
       }
     });
@@ -276,11 +276,11 @@ const listingsDb = {
     return attachListingLocationDetails(toRecord(updated));
   },
 
-  unpublishListing: async function(listingId: number, userId: string): Promise<Record<string, unknown> | null> {
+  unpublishListing: async function(listingId: number, userId: string, agencyId?: number): Promise<Record<string, unknown> | null> {
     const existing = await prisma.listing.findFirst({
       where: {
         id: listingId,
-        user_id: userId,
+        OR: agencyId ? [{ user_id: userId }, { agency_id: agencyId }] : [{ user_id: userId }],
         deleted_at: null
       }
     });
@@ -315,11 +315,11 @@ const listingsDb = {
     return listing ? attachListingLocationDetails(toRecord(listing)) : null;
   },
 
-  getOwnedListingById: async function(listingId: number, userId: string): Promise<Record<string, unknown> | null> {
+  getOwnedListingById: async function(listingId: number, userId: string, agencyId?: number): Promise<Record<string, unknown> | null> {
     const listing = await prisma.listing.findFirst({
       where: {
         id: listingId,
-        user_id: userId,
+        OR: agencyId ? [{ user_id: userId }, { agency_id: agencyId }] : [{ user_id: userId }],
         deleted_at: null
       },
       include: listingCreatorInclude
@@ -345,12 +345,13 @@ const listingsDb = {
   updateOwnedListing: async function(
     listingId: number,
     userId: string,
-    payload: Record<string, unknown>
+    payload: Record<string, unknown>,
+    agencyId?: number
   ): Promise<Record<string, unknown> | null> {
     const existing = await prisma.listing.findFirst({
       where: {
         id: listingId,
-        user_id: userId,
+        OR: agencyId ? [{ user_id: userId }, { agency_id: agencyId }] : [{ user_id: userId }],
         deleted_at: null
       }
     });
@@ -406,11 +407,11 @@ const listingsDb = {
     return attachListingLocationDetails(toRecord(updated));
   },
 
-  archiveOwnedListing: async function(listingId: number, userId: string): Promise<Record<string, unknown> | null> {
+  archiveOwnedListing: async function(listingId: number, userId: string, agencyId?: number): Promise<Record<string, unknown> | null> {
     const existing = await prisma.listing.findFirst({
       where: {
         id: listingId,
-        user_id: userId,
+        OR: agencyId ? [{ user_id: userId }, { agency_id: agencyId }] : [{ user_id: userId }],
         deleted_at: null
       }
     });
@@ -577,10 +578,10 @@ const listingsDb = {
     return deleted.count > 0;
   },
 
-  countPrivateListings: async function(userId: string): Promise<number> {
+  countPrivateListings: async function(userId: string, agencyId?: number): Promise<number> {
     const total = await prisma.listing.count({
       where: {
-        user_id: userId,
+        OR: agencyId ? [{ user_id: userId }, { agency_id: agencyId }] : [{ user_id: userId }],
         deleted_at: null
       }
     });
@@ -591,11 +592,12 @@ const listingsDb = {
   getPrivateListings: async function(
     userId: string,
     limit: number,
-    offset: number
+    offset: number,
+    agencyId?: number
   ): Promise<Record<string, unknown>[]> {
     const listings = await prisma.listing.findMany({
       where: {
-        user_id: userId,
+        OR: agencyId ? [{ user_id: userId }, { agency_id: agencyId }] : [{ user_id: userId }],
         deleted_at: null
       },
       orderBy: {

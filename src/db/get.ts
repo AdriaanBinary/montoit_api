@@ -7,7 +7,7 @@ export interface UserRecord {
   username: string;
   email: string;
   phone: string | null;
-  role: 'PRIVATE' | 'AGENT' | 'ADMIN';
+  role: 'PRIVATE' | 'AGENT' | 'AGENCY_OWNER' | 'ADMIN';
   password: string;
   created_at?: string;
   updated_at?: string;

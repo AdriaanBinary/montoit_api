@@ -39,6 +39,7 @@ model User {
 enum UserRole {
   PRIVATE
   AGENT
+  AGENCY_OWNER
   ADMIN
 
   @@map("user_role")

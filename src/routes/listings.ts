@@ -25,7 +25,7 @@ const router = express.Router();
 const listingCreatorSchema = z.object({
   id: z.string(),
   username: z.string(),
-  role: z.enum(['PRIVATE', 'AGENT']),
+  role: z.enum(['PRIVATE', 'AGENT', 'AGENCY_OWNER']),
   email: z.string().email(),
   phone: z.string().nullable()
 });
