@@ -47,7 +47,11 @@ function uniqueAgencyIds(agencyIds: number[]): number[] {
 }
 
 function toRecord(value: unknown): Record<string, unknown> {
-  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+  return JSON.parse(
+    JSON.stringify(value, (_key, nestedValue) =>
+      typeof nestedValue === 'bigint' ? nestedValue.toString() : nestedValue
+    )
+  ) as Record<string, unknown>;
 }
 
 async function ensureAgenciesExist(
