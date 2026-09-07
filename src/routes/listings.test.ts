@@ -77,6 +77,13 @@ test('excludes commercial properties from buy mode', () => {
   assert.deepEqual(where.property_type, { notIn: ['COMMERCIAL', 'INDUSTRIAL'] });
 });
 
+test('rent mode includes listings without an explicit rental term', () => {
+  const where = buildPublicListingsWhere({ mode: 'rent' });
+
+  assert.equal(where.listing_type, 'RENT');
+  assert.equal('rental_term' in where, false);
+});
+
 test('rejects invalid location ids in the public listings query schema', () => {
   const parsed = publicListingsQuerySchema.safeParse({ region_id: ['1', 'bad-value'] });
 
