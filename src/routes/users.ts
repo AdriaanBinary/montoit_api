@@ -4,11 +4,14 @@ import { registerApiRoute } from '../docs/swagger.js';
 import {
   addFavoriteListing,
   getFavoriteListings,
-  removeFavoriteListing
+  removeFavoriteListing,
+  getCurrentUser
 } from '../services/usersService.js';
 import { checkAuth } from '../utils/authMiddleware.js';
 
 const router = express.Router();
+
+router.get('/users/me', checkAuth, getCurrentUser);
 
 const favoriteListingBodySchema = z.object({
   listing_id: z.coerce.number().int().positive()

@@ -7,6 +7,7 @@ export interface UserRecord {
   username: string;
   email: string;
   phone: string | null;
+  role: 'PRIVATE' | 'AGENT' | 'ADMIN';
   password: string;
   created_at?: string;
   updated_at?: string;
@@ -50,6 +51,7 @@ const getData = {
           username: true,
           email: true,
           phone: true,
+          role: true,
           password: true,
           created_at: true,
           updated_at: true
@@ -71,6 +73,7 @@ const getData = {
         username: user.username,
         email: user.email,
         phone: user.phone,
+        role: user.role,
         password: storedPassword,
         created_at: user.created_at.toISOString(),
         updated_at: user.updated_at.toISOString()

@@ -14,7 +14,8 @@ const authUserSchema = z.object({
 	user_id: z.string(),
 	username: z.string(),
 	email: z.string().email(),
-	phone: z.string().nullable().optional()
+	phone: z.string().nullable().optional(),
+	role: z.enum(['PRIVATE', 'AGENT', 'ADMIN'])
 });
 
 const loginSuccessResponseSchema = z.object({

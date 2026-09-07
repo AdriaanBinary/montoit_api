@@ -34,7 +34,8 @@ export const login: RequestHandler = async (req, res) => {
           user_id: user.id,
           username: user.username,
           email: user.email,
-          phone: user.phone ?? null
+          phone: user.phone ?? null,
+          role: user.role
         }
       });
     }

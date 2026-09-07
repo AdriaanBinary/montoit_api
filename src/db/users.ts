@@ -9,6 +9,15 @@ function toRecords(values: unknown[]): Record<string, unknown>[] {
 }
 
 const usersDb = {
+  getUserById: async function(userId: string): Promise<Record<string, unknown> | null> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, username: true, email: true, phone: true, role: true, created_at: true }
+    });
+
+    return user ? toRecord(user) : null;
+  },
+
   getUserRole: async function(userId: string): Promise<string | null> {
     const user = await prisma.user.findUnique({
       where: { id: userId },

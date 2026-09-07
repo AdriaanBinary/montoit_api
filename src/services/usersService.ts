@@ -3,6 +3,23 @@ import listingsDb from '../db/listings.js';
 import usersDb from '../db/users.js';
 import { AuthenticatedRequest } from '../utils/authMiddleware.js';
 
+export const getCurrentUser: RequestHandler = async (req, res) => {
+  const userId = (req as AuthenticatedRequest).user?.user_id;
+  if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+  try {
+    const user = await usersDb.getUserById(userId);
+    if (!user) return res.status(404).json({ success: false, error: 'User not found' });
+    return res.json({ success: true, user: { ...user, user_id: user.id } });
+  } catch (error: unknown) {
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to load current user',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
 interface FavoriteListingRequestBody {
   listing_id?: number;
 }
