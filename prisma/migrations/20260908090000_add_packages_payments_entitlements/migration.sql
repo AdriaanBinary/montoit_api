@@ -348,6 +348,12 @@ CREATE TABLE "packages" (
     CONSTRAINT "packages_pkey" PRIMARY KEY ("id")
 );
 
+-- Seed the initial package catalogue. Prices are XAF and can be changed through a later migration.
+INSERT INTO "packages" ("name", "customer_type", "description", "price", "currency", "billing_period", "duration_days", "is_active")
+VALUES
+    ('Private Starter', 'PRIVATE', 'Publish and manage a private property listing.', 5000.00, 'XAF', 'ONE_TIME', 30, true),
+    ('Agency Starter', 'AGENCY', 'Activate an agency account and manage agency listings.', 25000.00, 'XAF', 'ONE_TIME', 30, true);
+
 -- CreateTable
 CREATE TABLE "package_features" (
     "id" SERIAL NOT NULL,

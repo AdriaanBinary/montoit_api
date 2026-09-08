@@ -10,6 +10,7 @@ import listingsRoutes from './routes/listings.js';
 import agenciesRoutes from './routes/agencies.js';
 import usersRoutes from './routes/users.js';
 import docsRoutes from './routes/docs.js';
+import packagesRoutes from './routes/packages.js';
 import prisma from './db/prisma.js';
 import { ensureCameroonLocationDataInitialized } from './db/locations.js';
 import { registerApiRoute } from './docs/swagger.js';
@@ -103,6 +104,7 @@ app.use('/api', locationsRoutes);
 app.use('/api', listingsRoutes);
 app.use('/api', usersRoutes);
 app.use('/api', agenciesRoutes);
+app.use('/api', packagesRoutes);
 app.use('/', docsRoutes);
 
 app.get('/api/db-test', async (_req: Request, res: Response) => {
