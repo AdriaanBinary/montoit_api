@@ -18,6 +18,7 @@ import {
 	uploadAgencyDocument
 } from '../services/agenciesService.js';
 import { checkAuth } from '../utils/authMiddleware.js';
+import { requireActivePackage } from '../utils/packageAccess.js';
 
 const router = express.Router();
 
@@ -196,7 +197,7 @@ registerApiRoute({
 	responses: { 200: { description: 'Agency application reviewed', schema: agencySuccessResponseSchema }, 400: { description: 'Invalid request', schema: agencyErrorResponseSchema }, 401: { description: 'Unauthorized', schema: agencyErrorResponseSchema }, 403: { description: 'Admin access required', schema: agencyErrorResponseSchema }, 409: { description: 'Application is not under review', schema: agencyErrorResponseSchema } }
 });
 
-router.post('/agencies', checkAuth, (req, res, next) => {
+router.post('/agencies', checkAuth, requireActivePackage, (req, res, next) => {
 	const parsedBody = createAgencyBodySchema.safeParse(req.body);
 
 	if (!parsedBody.success) {
@@ -213,7 +214,7 @@ router.post('/agencies', checkAuth, (req, res, next) => {
 
 router.get('/agencies/me', checkAuth, getMyAgency);
 
-router.post('/agencies/:id/documents', checkAuth, (req, res, next) => {
+router.post('/agencies/:id/documents', checkAuth, requireActivePackage, (req, res, next) => {
 	const parsedParams = agencyIdParamsSchema.safeParse(req.params);
 	const parsedBody = agencyDocumentUploadBodySchema.safeParse(req.body);
 	if (!parsedParams.success || !parsedBody.success) return res.status(400).json({ success: false, error: 'Invalid request' });
@@ -222,14 +223,14 @@ router.post('/agencies/:id/documents', checkAuth, (req, res, next) => {
 	return uploadAgencyDocument(req, res, next);
 });
 
-router.post('/agencies/:agencyId/documents/:documentId/confirm', checkAuth, (req, res, next) => {
+router.post('/agencies/:agencyId/documents/:documentId/confirm', checkAuth, requireActivePackage, (req, res, next) => {
 	const parsedParams = agencyDocumentParamsSchema.safeParse(req.params);
 	if (!parsedParams.success) return res.status(400).json({ success: false, error: 'Invalid request' });
 	req.params = parsedParams.data as unknown as typeof req.params;
 	return confirmAgencyDocumentUpload(req, res, next);
 });
 
-router.post('/agencies/:id/submit', checkAuth, (req, res, next) => {
+router.post('/agencies/:id/submit', checkAuth, requireActivePackage, (req, res, next) => {
 	const parsedParams = agencyIdParamsSchema.safeParse(req.params);
 	if (!parsedParams.success) return res.status(400).json({ success: false, error: 'Invalid request' });
 	req.params = parsedParams.data as unknown as typeof req.params;
@@ -247,7 +248,7 @@ router.post('/agencies/:id/review', checkAuth, (req, res, next) => {
 	return reviewAgencyApplication(req, res, next);
 });
 
-router.post('/agencies/:id/invitations', checkAuth, (req, res, next) => {
+router.post('/agencies/:id/invitations', checkAuth, requireActivePackage, (req, res, next) => {
 	const params = agencyIdParamsSchema.safeParse(req.params);
 	const body = agencyInvitationBodySchema.safeParse(req.body);
 	if (!params.success || !body.success) return res.status(400).json({ success: false, error: 'Invalid request' });
@@ -258,14 +259,14 @@ router.post('/agencies/:id/invitations', checkAuth, (req, res, next) => {
 
 router.get('/agencies/invitations/pending', checkAuth, getPendingAgencyInvitations);
 
-router.post('/agencies/invitations/:id/accept', checkAuth, (req, res, next) => {
+router.post('/agencies/invitations/:id/accept', checkAuth, requireActivePackage, (req, res, next) => {
 	const params = invitationIdParamsSchema.safeParse(req.params);
 	if (!params.success) return res.status(400).json({ success: false, error: 'Invalid request' });
 	req.params = params.data as unknown as typeof req.params;
 	return respondToAgencyInvitation(true)(req, res, next);
 });
 
-router.post('/agencies/invitations/:id/decline', checkAuth, (req, res, next) => {
+router.post('/agencies/invitations/:id/decline', checkAuth, requireActivePackage, (req, res, next) => {
 	const params = invitationIdParamsSchema.safeParse(req.params);
 	if (!params.success) return res.status(400).json({ success: false, error: 'Invalid request' });
 	req.params = params.data as unknown as typeof req.params;
@@ -274,7 +275,7 @@ router.post('/agencies/invitations/:id/decline', checkAuth, (req, res, next) => 
 
 router.get('/agencies/:id/agents', checkAuth, getAgencyAgents);
 
-router.patch('/agencies/:id/agents/:userId/listing-limit', checkAuth, (req, res, next) => {
+router.patch('/agencies/:id/agents/:userId/listing-limit', checkAuth, requireActivePackage, (req, res, next) => {
 	const params = agencyAgentParamsSchema.safeParse(req.params);
 	const body = agentListingLimitBodySchema.safeParse(req.body);
 	if (!params.success || !body.success) return res.status(400).json({ success: false, error: 'Invalid request' });
@@ -283,14 +284,14 @@ router.patch('/agencies/:id/agents/:userId/listing-limit', checkAuth, (req, res,
 	return updateAgentListingLimit(req, res, next);
 });
 
-router.delete('/agencies/:id/agents/:userId', checkAuth, (req, res, next) => {
+router.delete('/agencies/:id/agents/:userId', checkAuth, requireActivePackage, (req, res, next) => {
 	const params = agencyAgentParamsSchema.safeParse(req.params);
 	if (!params.success) return res.status(400).json({ success: false, error: 'Invalid request' });
 	req.params = params.data as unknown as typeof req.params;
 	return removeAgencyAgent(req, res, next);
 });
 
-router.post('/agencies/:id/listings/transfer', checkAuth, (req, res, next) => {
+router.post('/agencies/:id/listings/transfer', checkAuth, requireActivePackage, (req, res, next) => {
 	const params = agencyIdParamsSchema.safeParse(req.params);
 	const body = transferAgencyListingsBodySchema.safeParse(req.body);
 	if (!params.success || !body.success) return res.status(400).json({ success: false, error: 'Invalid request' });

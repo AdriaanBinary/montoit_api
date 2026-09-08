@@ -8,10 +8,26 @@ import {
   getCurrentUser
 } from '../services/usersService.js';
 import { checkAuth } from '../utils/authMiddleware.js';
+import { AuthenticatedRequest } from '../utils/authMiddleware.js';
+import { getPackageSummary } from '../utils/packageAccess.js';
 
 const router = express.Router();
 
 router.get('/users/me', checkAuth, getCurrentUser);
+
+router.get('/users/me/package', checkAuth, async (req, res) => {
+  const userId = (req as AuthenticatedRequest).user?.user_id;
+  if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+  try {
+    const packageSummary = await getPackageSummary(userId);
+    if (!packageSummary) return res.status(404).json({ success: false, error: 'User not found' });
+    return res.json({ success: true, package: packageSummary });
+  } catch (error) {
+    console.error('Failed to load package summary:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load package summary' });
+  }
+});
 
 const favoriteListingBodySchema = z.object({
   listing_id: z.coerce.number().int().positive()
