@@ -32,22 +32,40 @@ router.post('/packages/checkout', checkAuth, async (req, res) => {
 });
 
 router.get('/payments/flutterwave/complete', async (req, res) => {
+  const status = typeof req.query.status === 'string' ? req.query.status.toLowerCase() : undefined;
   const paymentId = typeof req.query.payment_id === 'string' ? req.query.payment_id : undefined;
   const transactionId = typeof req.query.transaction_id === 'string' ? req.query.transaction_id : undefined;
   const reference = typeof req.query.tx_ref === 'string' ? req.query.tx_ref : undefined;
+  const redirectBase = process.env.FLW_SUCCESS_REDIRECT_URL || 'http://localhost:3000/packages';
+
+  if (status === 'cancelled' || status === 'canceled' || status === 'failed') {
+    if (reference) {
+      try {
+        const resolvedPaymentId = await resolvePaymentId(reference);
+        if (resolvedPaymentId) {
+          const prisma = (await import('../db/prisma.js')).default;
+          await prisma.$executeRaw`
+            UPDATE payments SET status = 'FAILED'::payment_status, failure_reason = ${`Flutterwave payment ${status}`}, updated_at = NOW()
+            WHERE id = ${resolvedPaymentId}::uuid AND status NOT IN ('SUCCESS'::payment_status, 'FAILED'::payment_status)
+          `;
+        }
+      } catch (error) {
+        console.error('Failed to record cancelled Flutterwave payment:', error);
+      }
+    }
+    return res.redirect(`${redirectBase}${redirectBase.includes('?') ? '&' : '?'}payment=failed&error=PAYMENT_CANCELLED`);
+  }
 
   if (!transactionId || (!paymentId && !reference)) {
-    return res.status(400).json({ success: false, error: 'PAYMENT_CALLBACK_INVALID', message: 'Missing payment callback details' });
+    return res.redirect(`${redirectBase}${redirectBase.includes('?') ? '&' : '?'}payment=failed&error=PAYMENT_CALLBACK_INVALID`);
   }
 
   try {
     const resolvedPaymentId = paymentId || await resolvePaymentId(reference as string);
     if (!resolvedPaymentId) return res.status(404).json({ success: false, error: 'PAYMENT_NOT_FOUND' });
     const result = await completePackagePayment(resolvedPaymentId, transactionId);
-    const redirectBase = process.env.FLW_SUCCESS_REDIRECT_URL || 'http://localhost:3000/packages';
     return res.redirect(`${redirectBase}${redirectBase.includes('?') ? '&' : '?'}payment=success&package=${encodeURIComponent(result.package_name)}`);
   } catch (error) {
-    const redirectBase = process.env.FLW_SUCCESS_REDIRECT_URL || 'http://localhost:3000/packages';
     const code = error instanceof PackagePaymentError ? error.code : 'PAYMENT_FAILED';
     console.error('Package payment completion error:', error);
     return res.redirect(`${redirectBase}${redirectBase.includes('?') ? '&' : '?'}payment=failed&error=${encodeURIComponent(code)}`);
