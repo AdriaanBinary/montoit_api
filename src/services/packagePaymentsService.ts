@@ -86,12 +86,12 @@ export async function createPackageCheckout(userId: string, packageId: number, m
 
   try {
     const callbackUrl = process.env.FLW_PAYMENT_CALLBACK_URL || process.env.FLW_REDIRECT_URL || 'http://localhost:3000/api/payments/flutterwave/complete';
-    if (method === 'CARD' && process.env.FLW_HOSTED_CHECKOUT_ENABLED?.toLowerCase() === 'true') {
+    if (process.env.FLW_HOSTED_CHECKOUT_ENABLED?.toLowerCase() === 'true') {
       const hosted = await flutterwaveProvider.createHostedCheckout({
         amount: Number(packageRecord.price),
         currency: packageRecord.currency,
         reference,
-        customer: { email: user.email, name: { first: user.username, last: '' }, ...(user.phone ? { phone: { country_code: '237', number: user.phone } } : {}) },
+        customer: { email: user.email, name: user.username, phoneNumber: user.phone || undefined },
         redirectUrl: callbackUrl,
         description: packageRecord.name,
         paymentOptions: method === 'CARD' ? 'card' : 'mobilemoneycm',
@@ -104,7 +104,7 @@ export async function createPackageCheckout(userId: string, packageId: number, m
     }
 
     if (method !== 'MOBILE_MONEY') {
-      throw new PackagePaymentError('PAYMENT_METHOD_UNAVAILABLE', 'Hosted Card checkout is not enabled. Configure FLW_HOSTED_CHECKOUT_ENABLED and the Flutterwave secret key.', 400);
+      throw new PackagePaymentError('PAYMENT_METHOD_UNAVAILABLE', 'Hosted Flutterwave checkout is not enabled. Configure FLW_HOSTED_CHECKOUT_ENABLED and the Flutterwave secret key.', 400);
     }
     if (!mobileMoney?.phoneNumber || !mobileMoney.network) {
       throw new PackagePaymentError('MOBILE_MONEY_DETAILS_REQUIRED', 'Mobile Money network and phone number are required.', 400);

@@ -44,7 +44,7 @@ export type HostedCheckoutInput = {
 	amount: number;
 	currency: string;
 	reference: string;
-	customer: FlutterwaveCustomer;
+	customer: { email: string; name: string; phoneNumber?: string };
 	redirectUrl: string;
 	description?: string;
 	paymentOptions?: string;
@@ -173,7 +173,11 @@ export class FlutterwaveProvider {
 				currency: input.currency,
 				redirect_url: input.redirectUrl,
 				payment_options: input.paymentOptions || 'card,mobilemoneycm',
-				customer: input.customer,
+				customer: {
+					email: input.customer.email,
+					name: input.customer.name,
+					...(input.customer.phoneNumber ? { phonenumber: input.customer.phoneNumber } : {})
+				},
 				customizations: { title: 'Ndabo package upgrade', description: input.description },
 				meta: input.meta
 			})
