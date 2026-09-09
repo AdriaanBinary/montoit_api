@@ -4,11 +4,6 @@ import { flutterwaveProvider, FlutterwaveProviderError } from './payments/flutte
 
 export type PackagePaymentMethod = 'CARD' | 'MOBILE_MONEY';
 
-export type MobileMoneyDetails = {
-  network?: string;
-  phoneNumber?: string;
-};
-
 type PackageRecord = {
   id: number;
   name: string;
@@ -37,21 +32,6 @@ export class PackagePaymentError extends Error {
   }
 }
 
-function checkoutUrl(order: Record<string, unknown>): string | null {
-  const nextAction = order.next_action as { redirect_url?: { url?: string } } | undefined;
-  const candidates = [
-    nextAction?.redirect_url?.url,
-    typeof order.checkout_url === 'string' ? order.checkout_url : null,
-    typeof order.redirect_url === 'string' ? order.redirect_url : null
-  ];
-  return candidates.find((value): value is string => Boolean(value)) || null;
-}
-
-function paymentInstruction(charge: Record<string, unknown>): string | null {
-  const nextAction = charge.next_action as { payment_instruction?: { note?: string } } | undefined;
-  return nextAction?.payment_instruction?.note || null;
-}
-
 function expiryDate(durationDays: number | null, startsAt: Date): Date | null {
   if (!durationDays) return null;
   const expiry = new Date(startsAt);
@@ -59,7 +39,7 @@ function expiryDate(durationDays: number | null, startsAt: Date): Date | null {
   return expiry;
 }
 
-export async function createPackageCheckout(userId: string, packageId: number, method: PackagePaymentMethod, mobileMoney?: MobileMoneyDetails) {
+export async function createPackageCheckout(userId: string, packageId: number, method: PackagePaymentMethod) {
   const [userRows, packageRows] = await Promise.all([
     prisma.$queryRaw<Array<{ email: string; username: string; phone: string | null }>>`
       SELECT email, username, phone FROM users WHERE id = ${userId} LIMIT 1
@@ -103,42 +83,7 @@ export async function createPackageCheckout(userId: string, packageId: number, m
       return { payment_id: paymentId, reference, checkout_url: hosted.link, payment_instruction: null, package_name: packageRecord.name };
     }
 
-    if (method !== 'MOBILE_MONEY') {
-      throw new PackagePaymentError('PAYMENT_METHOD_UNAVAILABLE', 'Hosted Flutterwave checkout is not enabled. Configure FLW_HOSTED_CHECKOUT_ENABLED and the Flutterwave secret key.', 400);
-    }
-    if (!mobileMoney?.phoneNumber || !mobileMoney.network) {
-      throw new PackagePaymentError('MOBILE_MONEY_DETAILS_REQUIRED', 'Mobile Money network and phone number are required.', 400);
-    }
-
-    const charge = await flutterwaveProvider.createCharge({
-      amount: Number(packageRecord.price),
-      currency: packageRecord.currency,
-      reference,
-      customer: {
-        email: user.email,
-        name: { first: user.username, last: '' },
-        phone: { country_code: '237', number: mobileMoney.phoneNumber }
-      },
-      payment_method: {
-        type: 'mobile_money',
-        mobile_money: {
-          country_code: '237',
-          network: mobileMoney.network,
-          phone_number: mobileMoney.phoneNumber
-        }
-      },
-      redirect_url: callbackUrl,
-      description: packageRecord.name,
-      meta: { payment_id: paymentId, package_id: String(packageRecord.id) }
-    });
-    const redirectUrl = checkoutUrl(charge as Record<string, unknown>);
-    const instruction = paymentInstruction(charge as Record<string, unknown>);
-    if (!redirectUrl && !instruction) throw new PackagePaymentError('CHECKOUT_ACTION_MISSING', 'Flutterwave did not return payment instructions', 502);
-
-    await prisma.$executeRaw`
-      UPDATE payments SET checkout_url = ${redirectUrl}, updated_at = NOW() WHERE id = ${paymentId}::uuid
-    `;
-    return { payment_id: paymentId, reference, checkout_url: redirectUrl, payment_instruction: instruction, package_name: packageRecord.name };
+    throw new PackagePaymentError('PAYMENT_METHOD_UNAVAILABLE', 'Flutterwave hosted checkout is not enabled. Configure FLW_HOSTED_CHECKOUT_ENABLED and the v3 secret key.', 400);
   } catch (error) {
     await prisma.$executeRaw`
       UPDATE payments SET status = 'FAILED'::payment_status, failure_reason = ${error instanceof Error ? error.message : 'Checkout initialization failed'}, updated_at = NOW()
