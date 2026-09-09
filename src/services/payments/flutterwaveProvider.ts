@@ -40,6 +40,22 @@ export type FlutterwaveOrder = {
 
 export type FlutterwaveCharge = FlutterwaveOrder;
 
+export type HostedCheckoutInput = {
+	amount: number;
+	currency: string;
+	reference: string;
+	customer: FlutterwaveCustomer;
+	redirectUrl: string;
+	description?: string;
+	paymentOptions?: string;
+	meta?: Record<string, string>;
+};
+
+export type HostedCheckout = {
+	link: string;
+	transactionId?: string;
+};
+
 type FlutterwaveResponse<T> = {
 	status?: string;
 	message?: string;
@@ -109,6 +125,20 @@ function getConfig() {
 	};
 }
 
+function getHostedConfig() {
+	const environment = getEnvironment();
+	const prefix = environment === 'sandbox' ? 'FLW_SANDBOX' : 'FLW_LIVE';
+	const secretKey = process.env[`${prefix}_SECRET_KEY`]?.trim();
+	if (!secretKey) {
+		throw new FlutterwaveProviderError(`Missing Flutterwave configuration: ${prefix}_SECRET_KEY`);
+	}
+
+	return {
+		secretKey,
+		apiBaseUrl: process.env[`${prefix}_STANDARD_API_BASE_URL`]?.trim() || 'https://api.flutterwave.com/v3'
+	};
+}
+
 function providerErrorMessage(body: FlutterwaveResponse<unknown>): string {
 	if (typeof body.message === 'string' && body.message.trim()) return body.message;
 
@@ -129,6 +159,46 @@ function providerErrorMessage(body: FlutterwaveResponse<unknown>): string {
 }
 
 export class FlutterwaveProvider {
+	async createHostedCheckout(input: HostedCheckoutInput): Promise<HostedCheckout> {
+		const config = getHostedConfig();
+		const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, '')}/payments`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${config.secretKey}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				tx_ref: input.reference,
+				amount: input.amount,
+				currency: input.currency,
+				redirect_url: input.redirectUrl,
+				payment_options: input.paymentOptions || 'card,mobilemoneycm',
+				customer: input.customer,
+				customizations: { title: 'Ndabo package upgrade', description: input.description },
+				meta: input.meta
+			})
+		});
+		const body = await this.parseResponse<FlutterwaveResponse<{ link?: string; id?: string }>>(response);
+		const link = body.data?.link;
+		if (!response.ok || !link) {
+			throw new FlutterwaveProviderError(providerErrorMessage(body), response.status, body);
+		}
+		return { link, transactionId: body.data?.id };
+	}
+
+	async retrieveHostedTransaction(transactionId: string): Promise<FlutterwaveCharge> {
+		const config = getHostedConfig();
+		const response = await fetch(`${config.apiBaseUrl.replace(/\/$/, '')}/transactions/${encodeURIComponent(transactionId)}/verify`, {
+			method: 'GET',
+			headers: { Authorization: `Bearer ${config.secretKey}`, 'Content-Type': 'application/json' }
+		});
+		const body = await this.parseResponse<FlutterwaveResponse<FlutterwaveCharge>>(response);
+		if (!response.ok || !body.data) {
+			throw new FlutterwaveProviderError(providerErrorMessage(body), response.status, body);
+		}
+		return body.data;
+	}
+
 	async createCharge(input: FlutterwaveOrderInput): Promise<FlutterwaveCharge> {
 		return this.createOrchestratorResource<FlutterwaveCharge>('/orchestration/direct-charges', input);
 	}

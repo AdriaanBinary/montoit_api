@@ -7,9 +7,13 @@ const router = express.Router();
 
 const checkoutSchema = z.object({
   package_id: z.coerce.number().int().positive(),
-  method: z.literal('MOBILE_MONEY').default('MOBILE_MONEY'),
-  network: z.string().trim().min(2).max(30).default('MTN'),
-  phone_number: z.string().regex(/^\d{7,10}$/, 'Enter a valid Cameroon mobile number')
+  method: z.enum(['CARD', 'MOBILE_MONEY']).default('MOBILE_MONEY'),
+  network: z.string().trim().min(2).max(30).optional(),
+  phone_number: z.string().regex(/^\d{7,10}$/, 'Enter a valid Cameroon mobile number').optional()
+}).superRefine((value, context) => {
+  if (value.method === 'MOBILE_MONEY' && !value.phone_number) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['phone_number'], message: 'Enter a valid Cameroon mobile number' });
+  }
 });
 
 router.post('/packages/checkout', checkAuth, async (req, res) => {

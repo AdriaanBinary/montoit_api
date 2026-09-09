@@ -5,8 +5,8 @@ import { flutterwaveProvider, FlutterwaveProviderError } from './payments/flutte
 export type PackagePaymentMethod = 'CARD' | 'MOBILE_MONEY';
 
 export type MobileMoneyDetails = {
-  network: string;
-  phoneNumber: string;
+  network?: string;
+  phoneNumber?: string;
 };
 
 type PackageRecord = {
@@ -84,8 +84,26 @@ export async function createPackageCheckout(userId: string, packageId: number, m
   if (!paymentId) throw new PackagePaymentError('PAYMENT_CREATE_FAILED', 'Unable to create payment', 500);
 
   try {
+    const callbackUrl = process.env.FLW_PAYMENT_CALLBACK_URL || process.env.FLW_REDIRECT_URL || 'http://localhost:3000/api/payments/flutterwave/complete';
+    if (process.env.FLW_HOSTED_CHECKOUT_ENABLED?.toLowerCase() === 'true') {
+      const hosted = await flutterwaveProvider.createHostedCheckout({
+        amount: Number(packageRecord.price),
+        currency: packageRecord.currency,
+        reference,
+        customer: { email: user.email, name: { first: user.username, last: '' }, ...(user.phone ? { phone: { country_code: '237', number: user.phone } } : {}) },
+        redirectUrl: callbackUrl,
+        description: packageRecord.name,
+        paymentOptions: method === 'CARD' ? 'card' : 'mobilemoneycm',
+        meta: { payment_id: paymentId, package_id: String(packageRecord.id) }
+      });
+      await prisma.$executeRaw`
+        UPDATE payments SET checkout_url = ${hosted.link}, provider_transaction_id = ${hosted.transactionId || null}, updated_at = NOW() WHERE id = ${paymentId}::uuid
+      `;
+      return { payment_id: paymentId, reference, checkout_url: hosted.link, payment_instruction: null, package_name: packageRecord.name };
+    }
+
     if (method !== 'MOBILE_MONEY') {
-      throw new PackagePaymentError('PAYMENT_METHOD_UNAVAILABLE', 'Only Mobile Money checkout is currently available.', 400);
+      throw new PackagePaymentError('PAYMENT_METHOD_UNAVAILABLE', 'Hosted Card checkout is not enabled. Configure FLW_HOSTED_CHECKOUT_ENABLED and the Flutterwave secret key.', 400);
     }
     if (!mobileMoney?.phoneNumber || !mobileMoney.network) {
       throw new PackagePaymentError('MOBILE_MONEY_DETAILS_REQUIRED', 'Mobile Money network and phone number are required.', 400);
@@ -108,7 +126,7 @@ export async function createPackageCheckout(userId: string, packageId: number, m
           phone_number: mobileMoney.phoneNumber
         }
       },
-      redirect_url: process.env.FLW_PAYMENT_CALLBACK_URL || process.env.FLW_REDIRECT_URL || 'http://localhost:3000/api/payments/flutterwave/complete',
+      redirect_url: callbackUrl,
       description: packageRecord.name,
       meta: { payment_id: paymentId, package_id: String(packageRecord.id) }
     });
@@ -141,7 +159,9 @@ export async function completePackagePayment(paymentId: string, transactionId: s
   const payment = payments[0];
   if (!payment) throw new PackagePaymentError('PAYMENT_NOT_FOUND', 'Payment not found', 404);
 
-  const charge = await flutterwaveProvider.retrieveCharge(transactionId) as Record<string, unknown>;
+  const charge = await (process.env.FLW_HOSTED_CHECKOUT_ENABLED?.toLowerCase() === 'true'
+    ? flutterwaveProvider.retrieveHostedTransaction(transactionId)
+    : flutterwaveProvider.retrieveCharge(transactionId)) as Record<string, unknown>;
   const providerReference = typeof charge.reference === 'string' ? charge.reference : null;
   const providerStatus = String(charge.status || '').toUpperCase();
   const providerAmount = Number(charge.amount);
@@ -151,7 +171,7 @@ export async function completePackagePayment(paymentId: string, transactionId: s
     throw new PackagePaymentError('PAYMENT_VERIFICATION_FAILED', 'Payment details do not match the selected package', 400);
   }
 
-  if (providerStatus !== 'SUCCESS' && providerStatus !== 'COMPLETED') {
+  if (!['SUCCESS', 'SUCCEEDED', 'SUCCESSFUL', 'COMPLETED'].includes(providerStatus)) {
     await prisma.$executeRaw`
       UPDATE payments SET status = 'PROCESSING'::payment_status, provider_transaction_id = ${transactionId}, updated_at = NOW()
       WHERE id = ${payment.id}::uuid
