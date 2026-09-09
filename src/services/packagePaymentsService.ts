@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import prisma from '../db/prisma.js';
 import { flutterwaveProvider, FlutterwaveProviderError } from './payments/flutterwaveProvider.js';
+import { errorFields, logger, maskIdentifier } from '../utils/logger.js';
 
 export type PackagePaymentMethod = 'CARD' | 'MOBILE_MONEY';
 
@@ -39,7 +40,7 @@ function expiryDate(durationDays: number | null, startsAt: Date): Date | null {
   return expiry;
 }
 
-export async function createPackageCheckout(userId: string, packageId: number, method: PackagePaymentMethod) {
+export async function createPackageCheckout(userId: string, packageId: number, method: PackagePaymentMethod, requestId?: string) {
   const [userRows, packageRows] = await Promise.all([
     prisma.$queryRaw<Array<{ email: string; username: string; phone: string | null }>>`
       SELECT email, username, phone FROM users WHERE id = ${userId} LIMIT 1
@@ -80,6 +81,7 @@ export async function createPackageCheckout(userId: string, packageId: number, m
       await prisma.$executeRaw`
         UPDATE payments SET checkout_url = ${hosted.link}, provider_transaction_id = ${hosted.transactionId || null}, updated_at = NOW() WHERE id = ${paymentId}::uuid
       `;
+      logger.info('payment.provider.checkout_created', { request_id: requestId, payment_id: paymentId, user_id: userId, package_id: packageId, method, provider_reference: reference, provider_transaction_id: maskIdentifier(hosted.transactionId) });
       return { payment_id: paymentId, reference, checkout_url: hosted.link, payment_instruction: null, package_name: packageRecord.name };
     }
 
@@ -90,12 +92,13 @@ export async function createPackageCheckout(userId: string, packageId: number, m
       WHERE id = ${paymentId}::uuid
     `;
     if (error instanceof PackagePaymentError) throw error;
+    logger.error('payment.provider.checkout_failed', { request_id: requestId, payment_id: paymentId, user_id: userId, package_id: packageId, method, ...errorFields(error) });
     const message = error instanceof FlutterwaveProviderError ? error.message : 'Unable to initialize payment with Flutterwave';
     throw new PackagePaymentError('PAYMENT_INITIALIZATION_FAILED', message, 502);
   }
 }
 
-export async function completePackagePayment(paymentId: string, transactionId: string) {
+export async function completePackagePayment(paymentId: string, transactionId: string, requestId?: string) {
   const payments = await prisma.$queryRaw<PendingPayment[]>`
     SELECT p.id, p.user_id, p.package_id, p.amount::text, p.currency, p.provider_reference, p.method,
            pkg.name AS package_name, pkg.duration_days
@@ -113,11 +116,15 @@ export async function completePackagePayment(paymentId: string, transactionId: s
   const providerAmount = Number(charge.amount);
   const providerCurrency = String(charge.currency || '');
 
+  logger.info('payment.verification.response', { request_id: requestId, payment_id: paymentId, transaction_id: maskIdentifier(transactionId), provider_reference: maskIdentifier(providerReference || undefined), provider_status: providerStatus, provider_amount: providerAmount, provider_currency: providerCurrency, reference_matches: providerReference === payment.provider_reference, amount_matches: providerAmount === Number(payment.amount), currency_matches: providerCurrency === payment.currency });
+
   if (providerReference !== payment.provider_reference || providerAmount !== Number(payment.amount) || providerCurrency !== payment.currency) {
+    logger.warn('payment.verification.rejected', { request_id: requestId, payment_id: paymentId, reason: 'payment_details_mismatch' });
     throw new PackagePaymentError('PAYMENT_VERIFICATION_FAILED', 'Payment details do not match the selected package', 400);
   }
 
   if (!['SUCCESS', 'SUCCEEDED', 'SUCCESSFUL', 'COMPLETED'].includes(providerStatus)) {
+    logger.warn('payment.verification.pending', { request_id: requestId, payment_id: paymentId, provider_status: providerStatus });
     await prisma.$executeRaw`
       UPDATE payments SET status = 'PROCESSING'::payment_status, provider_transaction_id = ${transactionId}, updated_at = NOW()
       WHERE id = ${payment.id}::uuid
@@ -142,6 +149,8 @@ export async function completePackagePayment(paymentId: string, transactionId: s
       WHERE id = ${payment.user_id}
     `;
   });
+
+  logger.info('payment.entitlement.activated', { request_id: requestId, payment_id: payment.id, user_id: payment.user_id, package_id: payment.package_id, status: 'SUCCESS' });
 
   return { payment_id: payment.id, package_name: payment.package_name, subscription_expiry: expiresAt };
 }

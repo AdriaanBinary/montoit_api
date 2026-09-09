@@ -10,6 +10,7 @@ import {
 import { checkAuth } from '../utils/authMiddleware.js';
 import { AuthenticatedRequest } from '../utils/authMiddleware.js';
 import { getPackageSummary } from '../utils/packageAccess.js';
+import { errorFields, logger } from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -22,9 +23,15 @@ router.get('/users/me/package', checkAuth, async (req, res) => {
   try {
     const packageSummary = await getPackageSummary(userId);
     if (!packageSummary) return res.status(404).json({ success: false, error: 'User not found' });
+    logger.info('payment.package_summary.loaded', {
+      request_id: req.requestId,
+      user_id: userId,
+      subscription_status: packageSummary.subscription_status,
+      package_name: packageSummary.package_name
+    });
     return res.json({ success: true, package: packageSummary });
   } catch (error) {
-    console.error('Failed to load package summary:', error);
+    logger.error('payment.package_summary.failed', { request_id: req.requestId, user_id: userId, ...errorFields(error) });
     return res.status(500).json({ success: false, error: 'Failed to load package summary' });
   }
 });

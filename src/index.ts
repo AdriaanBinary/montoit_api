@@ -15,6 +15,7 @@ import paymentsRoutes from './routes/payments.js';
 import prisma from './db/prisma.js';
 import { ensureCameroonLocationDataInitialized } from './db/locations.js';
 import { registerApiRoute } from './docs/swagger.js';
+import { errorFields, logger, requestIdMiddleware } from './utils/logger.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -88,6 +89,7 @@ registerApiRoute({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(requestIdMiddleware);
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
@@ -118,7 +120,7 @@ app.get('/api/db-test', async (_req: Request, res: Response) => {
       timestamp: result[0]?.now
     });
   } catch (error: unknown) {
-    console.error('Database test error:', error);
+    logger.error('database.test.failed', { request_id: _req.requestId, ...errorFields(error) });
     res.status(500).json({
       success: false,
       error: 'Database connection failed',
@@ -136,7 +138,7 @@ app.use((_req: Request, res: Response) => {
 });
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('Error:', err);
+  logger.error('request.failed', { request_id: _req.requestId, path: _req.path, ...errorFields(err) });
 
   if (err instanceof Error && err.message === 'Origin is not allowed by CORS') {
     return res.status(403).json({
