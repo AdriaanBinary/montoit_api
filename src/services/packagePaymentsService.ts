@@ -4,6 +4,10 @@ import { flutterwaveProvider, FlutterwaveProviderError } from './payments/flutte
 
 export type PackagePaymentMethod = 'CARD' | 'MOBILE_MONEY';
 
+function flutterwavePaymentMethod(method: PackagePaymentMethod): string {
+  return method === 'MOBILE_MONEY' ? 'mobile_money' : 'card';
+}
+
 type PackageRecord = {
   id: number;
   name: string;
@@ -79,7 +83,7 @@ export async function createPackageCheckout(userId: string, packageId: number, m
       currency: packageRecord.currency,
       reference,
       customer: { email: user.email, name: { first: user.username, last: '' } },
-      payment_method: { type: method },
+      payment_method: { type: flutterwavePaymentMethod(method) },
       redirect_url: process.env.FLW_PAYMENT_CALLBACK_URL || process.env.FLW_REDIRECT_URL || 'http://localhost:3000/api/payments/flutterwave/complete',
       description: packageRecord.name,
       meta: { payment_id: paymentId, package_id: String(packageRecord.id) }
