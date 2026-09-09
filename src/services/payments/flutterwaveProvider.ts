@@ -105,8 +105,27 @@ function getConfig() {
 		apiBaseUrl: process.env[`${prefix}_API_BASE_URL`]?.trim() ||
 			(environment === 'sandbox'
 				? 'https://developersandbox-api.flutterwave.com'
-				: 'https://api.flutterwave.com')
+				: 'https://f4bexperience.flutterwave.com')
 	};
+}
+
+function providerErrorMessage(body: FlutterwaveResponse<unknown>): string {
+	if (typeof body.message === 'string' && body.message.trim()) return body.message;
+
+	const error = body.error;
+	if (error && typeof error === 'object') {
+		const errorRecord = error as Record<string, unknown>;
+		if (typeof errorRecord.message === 'string' && errorRecord.message.trim()) return errorRecord.message;
+		const validationErrors = errorRecord.validation_errors;
+		if (Array.isArray(validationErrors)) {
+			const messages = validationErrors
+				.map((item) => item && typeof item === 'object' ? (item as Record<string, unknown>).message : null)
+				.filter((message): message is string => typeof message === 'string' && Boolean(message.trim()));
+			if (messages.length) return messages.join('; ');
+		}
+	}
+
+	return 'Flutterwave API request failed';
 }
 
 export class FlutterwaveProvider {
@@ -207,7 +226,7 @@ export class FlutterwaveProvider {
 
 		if (!response.ok) {
 			throw new FlutterwaveProviderError(
-				typeof body.message === 'string' ? body.message : 'Flutterwave API request failed',
+				providerErrorMessage(body),
 				response.status,
 				body
 			);
