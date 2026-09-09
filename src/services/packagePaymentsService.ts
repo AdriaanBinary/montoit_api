@@ -74,7 +74,7 @@ export async function createPackageCheckout(userId: string, packageId: number, m
         customer: { email: user.email, name: user.username, phoneNumber: user.phone || undefined },
         redirectUrl: callbackUrl,
         description: packageRecord.name,
-        paymentOptions: method === 'CARD' ? 'card' : 'mobilemoneycm',
+        paymentOptions: method === 'CARD' ? 'card' : 'mobilemoneyxaf',
         meta: { payment_id: paymentId, package_id: String(packageRecord.id) }
       });
       await prisma.$executeRaw`
