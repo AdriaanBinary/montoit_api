@@ -4,9 +4,10 @@ import { flutterwaveProvider, FlutterwaveProviderError } from './payments/flutte
 
 export type PackagePaymentMethod = 'CARD' | 'MOBILE_MONEY';
 
-function flutterwavePaymentMethod(method: PackagePaymentMethod): string {
-  return method === 'MOBILE_MONEY' ? 'mobile_money' : 'card';
-}
+export type MobileMoneyDetails = {
+  network: string;
+  phoneNumber: string;
+};
 
 type PackageRecord = {
   id: number;
@@ -45,6 +46,11 @@ function checkoutUrl(order: Record<string, unknown>): string | null {
   return candidates.find((value): value is string => Boolean(value)) || null;
 }
 
+function paymentInstruction(charge: Record<string, unknown>): string | null {
+  const nextAction = charge.next_action as { payment_instruction?: { note?: string } } | undefined;
+  return nextAction?.payment_instruction?.note || null;
+}
+
 function expiryDate(durationDays: number | null, startsAt: Date): Date | null {
   if (!durationDays) return null;
   const expiry = new Date(startsAt);
@@ -52,7 +58,7 @@ function expiryDate(durationDays: number | null, startsAt: Date): Date | null {
   return expiry;
 }
 
-export async function createPackageCheckout(userId: string, packageId: number, method: PackagePaymentMethod) {
+export async function createPackageCheckout(userId: string, packageId: number, method: PackagePaymentMethod, mobileMoney?: MobileMoneyDetails) {
   const [userRows, packageRows] = await Promise.all([
     prisma.$queryRaw<Array<{ email: string; username: string; phone: string | null }>>`
       SELECT email, username, phone FROM users WHERE id = ${userId} LIMIT 1
@@ -68,7 +74,7 @@ export async function createPackageCheckout(userId: string, packageId: number, m
   if (!user) throw new PackagePaymentError('USER_NOT_FOUND', 'User not found', 404);
   if (!packageRecord) throw new PackagePaymentError('PACKAGE_NOT_FOUND', 'Package is not available', 404);
 
-  const reference = `montoit-${userId}-${Date.now()}-${crypto.randomUUID()}`;
+  const reference = `montoit-${Date.now().toString(36)}-${crypto.randomBytes(6).toString('hex')}`;
   const paymentRows = await prisma.$queryRaw<Array<{ id: string }>>`
     INSERT INTO payments (user_id, package_id, amount, currency, method, provider, provider_reference, idempotency_key)
     VALUES (${userId}, ${packageRecord.id}, ${packageRecord.price}, ${packageRecord.currency}, ${method}::payment_method, 'flutterwave', ${reference}, ${reference})
@@ -78,23 +84,42 @@ export async function createPackageCheckout(userId: string, packageId: number, m
   if (!paymentId) throw new PackagePaymentError('PAYMENT_CREATE_FAILED', 'Unable to create payment', 500);
 
   try {
-    const order = await flutterwaveProvider.createOrder({
+    if (method !== 'MOBILE_MONEY') {
+      throw new PackagePaymentError('PAYMENT_METHOD_UNAVAILABLE', 'Only Mobile Money checkout is currently available.', 400);
+    }
+    if (!mobileMoney?.phoneNumber || !mobileMoney.network) {
+      throw new PackagePaymentError('MOBILE_MONEY_DETAILS_REQUIRED', 'Mobile Money network and phone number are required.', 400);
+    }
+
+    const charge = await flutterwaveProvider.createCharge({
       amount: Number(packageRecord.price),
       currency: packageRecord.currency,
       reference,
-      customer: { email: user.email, name: { first: user.username, last: '' } },
-      payment_method: { type: flutterwavePaymentMethod(method) },
+      customer: {
+        email: user.email,
+        name: { first: user.username, last: '' },
+        phone: { country_code: '237', number: mobileMoney.phoneNumber }
+      },
+      payment_method: {
+        type: 'mobile_money',
+        mobile_money: {
+          country_code: '237',
+          network: mobileMoney.network,
+          phone_number: mobileMoney.phoneNumber
+        }
+      },
       redirect_url: process.env.FLW_PAYMENT_CALLBACK_URL || process.env.FLW_REDIRECT_URL || 'http://localhost:3000/api/payments/flutterwave/complete',
       description: packageRecord.name,
       meta: { payment_id: paymentId, package_id: String(packageRecord.id) }
     });
-    const redirectUrl = checkoutUrl(order as Record<string, unknown>);
-    if (!redirectUrl) throw new PackagePaymentError('CHECKOUT_URL_MISSING', 'Flutterwave did not return a checkout URL', 502);
+    const redirectUrl = checkoutUrl(charge as Record<string, unknown>);
+    const instruction = paymentInstruction(charge as Record<string, unknown>);
+    if (!redirectUrl && !instruction) throw new PackagePaymentError('CHECKOUT_ACTION_MISSING', 'Flutterwave did not return payment instructions', 502);
 
     await prisma.$executeRaw`
       UPDATE payments SET checkout_url = ${redirectUrl}, updated_at = NOW() WHERE id = ${paymentId}::uuid
     `;
-    return { payment_id: paymentId, reference, checkout_url: redirectUrl, package_name: packageRecord.name };
+    return { payment_id: paymentId, reference, checkout_url: redirectUrl, payment_instruction: instruction, package_name: packageRecord.name };
   } catch (error) {
     await prisma.$executeRaw`
       UPDATE payments SET status = 'FAILED'::payment_status, failure_reason = ${error instanceof Error ? error.message : 'Checkout initialization failed'}, updated_at = NOW()
@@ -116,11 +141,11 @@ export async function completePackagePayment(paymentId: string, transactionId: s
   const payment = payments[0];
   if (!payment) throw new PackagePaymentError('PAYMENT_NOT_FOUND', 'Payment not found', 404);
 
-  const order = await flutterwaveProvider.retrieveOrder(transactionId) as Record<string, unknown>;
-  const providerReference = typeof order.reference === 'string' ? order.reference : null;
-  const providerStatus = String(order.status || '').toUpperCase();
-  const providerAmount = Number(order.amount);
-  const providerCurrency = String(order.currency || '');
+  const charge = await flutterwaveProvider.retrieveCharge(transactionId) as Record<string, unknown>;
+  const providerReference = typeof charge.reference === 'string' ? charge.reference : null;
+  const providerStatus = String(charge.status || '').toUpperCase();
+  const providerAmount = Number(charge.amount);
+  const providerCurrency = String(charge.currency || '');
 
   if (providerReference !== payment.provider_reference || providerAmount !== Number(payment.amount) || providerCurrency !== payment.currency) {
     throw new PackagePaymentError('PAYMENT_VERIFICATION_FAILED', 'Payment details do not match the selected package', 400);

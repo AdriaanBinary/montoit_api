@@ -7,7 +7,9 @@ const router = express.Router();
 
 const checkoutSchema = z.object({
   package_id: z.coerce.number().int().positive(),
-  method: z.enum(['CARD', 'MOBILE_MONEY']).default('MOBILE_MONEY')
+  method: z.literal('MOBILE_MONEY').default('MOBILE_MONEY'),
+  network: z.string().trim().min(2).max(30).default('MTN'),
+  phone_number: z.string().regex(/^\d{7,10}$/, 'Enter a valid Cameroon mobile number')
 });
 
 router.post('/packages/checkout', checkAuth, async (req, res) => {
@@ -20,7 +22,10 @@ router.post('/packages/checkout', checkAuth, async (req, res) => {
   if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
   try {
-    const checkout = await createPackageCheckout(userId, parsed.data.package_id, parsed.data.method);
+    const checkout = await createPackageCheckout(userId, parsed.data.package_id, parsed.data.method, {
+      network: parsed.data.network,
+      phoneNumber: parsed.data.phone_number
+    });
     return res.status(201).json({ success: true, ...checkout });
   } catch (error) {
     if (error instanceof PackagePaymentError) {
