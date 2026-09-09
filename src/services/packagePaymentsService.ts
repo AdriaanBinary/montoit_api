@@ -25,6 +25,7 @@ type PendingPayment = {
   amount: string;
   currency: string;
   provider_reference: string;
+  method: PackagePaymentMethod;
   package_name: string;
   duration_days: number | null;
 };
@@ -85,7 +86,7 @@ export async function createPackageCheckout(userId: string, packageId: number, m
 
   try {
     const callbackUrl = process.env.FLW_PAYMENT_CALLBACK_URL || process.env.FLW_REDIRECT_URL || 'http://localhost:3000/api/payments/flutterwave/complete';
-    if (process.env.FLW_HOSTED_CHECKOUT_ENABLED?.toLowerCase() === 'true') {
+    if (method === 'CARD' && process.env.FLW_HOSTED_CHECKOUT_ENABLED?.toLowerCase() === 'true') {
       const hosted = await flutterwaveProvider.createHostedCheckout({
         amount: Number(packageRecord.price),
         currency: packageRecord.currency,
@@ -151,7 +152,7 @@ export async function createPackageCheckout(userId: string, packageId: number, m
 
 export async function completePackagePayment(paymentId: string, transactionId: string) {
   const payments = await prisma.$queryRaw<PendingPayment[]>`
-    SELECT p.id, p.user_id, p.package_id, p.amount::text, p.currency, p.provider_reference,
+    SELECT p.id, p.user_id, p.package_id, p.amount::text, p.currency, p.provider_reference, p.method,
            pkg.name AS package_name, pkg.duration_days
     FROM payments p JOIN packages pkg ON pkg.id = p.package_id
     WHERE p.id = ${paymentId}::uuid LIMIT 1
@@ -159,7 +160,7 @@ export async function completePackagePayment(paymentId: string, transactionId: s
   const payment = payments[0];
   if (!payment) throw new PackagePaymentError('PAYMENT_NOT_FOUND', 'Payment not found', 404);
 
-  const charge = await (process.env.FLW_HOSTED_CHECKOUT_ENABLED?.toLowerCase() === 'true'
+  const charge = await (payment.method === 'CARD' && process.env.FLW_HOSTED_CHECKOUT_ENABLED?.toLowerCase() === 'true'
     ? flutterwaveProvider.retrieveHostedTransaction(transactionId)
     : flutterwaveProvider.retrieveCharge(transactionId)) as Record<string, unknown>;
   const providerReference = typeof charge.reference === 'string' ? charge.reference : null;
