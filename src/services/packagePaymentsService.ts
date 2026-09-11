@@ -122,14 +122,16 @@ export async function completePackagePayment(paymentId: string, transactionId: s
   const charge = await (payment.method === 'CARD' && process.env.FLW_HOSTED_CHECKOUT_ENABLED?.toLowerCase() === 'true'
     ? flutterwaveProvider.retrieveHostedTransaction(transactionId)
     : flutterwaveProvider.retrieveCharge(transactionId)) as Record<string, unknown>;
-  const providerReference = typeof charge.reference === 'string' ? charge.reference : null;
+  const providerReference = typeof charge.reference === 'string'
+    ? charge.reference
+    : typeof charge.tx_ref === 'string' ? charge.tx_ref : null;
   const providerStatus = String(charge.status || '').toUpperCase();
   const providerAmount = Number(charge.amount);
-  const providerCurrency = String(charge.currency || '');
+  const providerCurrency = String(charge.currency || '').toUpperCase();
 
   logger.info('payment.verification.response', { request_id: requestId, payment_id: paymentId, transaction_id: maskIdentifier(transactionId), provider_reference: maskIdentifier(providerReference || undefined), provider_status: providerStatus, provider_amount: providerAmount, provider_currency: providerCurrency, reference_matches: providerReference === payment.provider_reference, amount_matches: providerAmount === Number(payment.amount), currency_matches: providerCurrency === payment.currency });
 
-  if (providerReference !== payment.provider_reference || providerAmount !== Number(payment.amount) || providerCurrency !== payment.currency) {
+  if (providerReference !== payment.provider_reference || providerAmount !== Number(payment.amount) || providerCurrency !== payment.currency.toUpperCase()) {
     logger.warn('payment.verification.rejected', { request_id: requestId, payment_id: paymentId, reason: 'payment_details_mismatch' });
     throw new PackagePaymentError('PAYMENT_VERIFICATION_FAILED', 'Payment details do not match the selected package', 400);
   }
