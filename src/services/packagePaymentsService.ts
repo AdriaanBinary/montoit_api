@@ -119,7 +119,7 @@ export async function completePackagePayment(paymentId: string, transactionId: s
     return { payment_id: payment.id, package_name: payment.package_name, subscription_expiry: existingSuccess[0].subscription_expiry };
   }
 
-  const charge = await (payment.method === 'CARD' && process.env.FLW_HOSTED_CHECKOUT_ENABLED?.toLowerCase() === 'true'
+  const charge = await (process.env.FLW_HOSTED_CHECKOUT_ENABLED?.toLowerCase() === 'true'
     ? flutterwaveProvider.retrieveHostedTransaction(transactionId)
     : flutterwaveProvider.retrieveCharge(transactionId)) as Record<string, unknown>;
   const providerReference = typeof charge.reference === 'string'
