@@ -84,6 +84,10 @@ export function isValidFlutterwaveWebhookSignature(
 	return expectedBuffer.length === receivedBuffer.length && timingSafeEqual(expectedBuffer, receivedBuffer);
 }
 
+export function isValidFlutterwaveWebhookSecret(signature: string | undefined, secretHash: string | undefined): boolean {
+	return Boolean(signature && secretHash && signature === secretHash);
+}
+
 export class FlutterwaveProviderError extends Error {
 	readonly statusCode?: number;
 	readonly responseBody?: unknown;

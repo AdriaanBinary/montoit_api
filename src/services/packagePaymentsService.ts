@@ -66,7 +66,7 @@ export async function createPackageCheckout(userId: string, packageId: number, m
   if (!paymentId) throw new PackagePaymentError('PAYMENT_CREATE_FAILED', 'Unable to create payment', 500);
 
   try {
-    const callbackUrl = process.env.FLW_PAYMENT_CALLBACK_URL || process.env.FLW_REDIRECT_URL || 'http://localhost:3000/api/payments/flutterwave/complete';
+    const callbackUrl = process.env.FLW_PAYMENT_CALLBACK_URL || `${process.env.API_PUBLIC_URL || 'http://localhost:3000'}/api/payments/flutterwave/complete`;
     if (process.env.FLW_HOSTED_CHECKOUT_ENABLED?.toLowerCase() === 'true') {
       const hosted = await flutterwaveProvider.createHostedCheckout({
         amount: Number(packageRecord.price),
@@ -108,6 +108,17 @@ export async function completePackagePayment(paymentId: string, transactionId: s
   const payment = payments[0];
   if (!payment) throw new PackagePaymentError('PAYMENT_NOT_FOUND', 'Payment not found', 404);
 
+  const existingSuccess = await prisma.$queryRaw<Array<{ subscription_expiry: Date | null }>>`
+    SELECT u.subscription_expiry
+    FROM payments p
+    JOIN users u ON u.id = p.user_id
+    WHERE p.id = ${paymentId}::uuid AND p.status = 'SUCCESS'::payment_status
+    LIMIT 1
+  `;
+  if (existingSuccess[0]) {
+    return { payment_id: payment.id, package_name: payment.package_name, subscription_expiry: existingSuccess[0].subscription_expiry };
+  }
+
   const charge = await (payment.method === 'CARD' && process.env.FLW_HOSTED_CHECKOUT_ENABLED?.toLowerCase() === 'true'
     ? flutterwaveProvider.retrieveHostedTransaction(transactionId)
     : flutterwaveProvider.retrieveCharge(transactionId)) as Record<string, unknown>;
@@ -133,7 +144,12 @@ export async function completePackagePayment(paymentId: string, transactionId: s
   }
 
   const startedAt = new Date();
-  const expiresAt = expiryDate(payment.duration_days, startedAt);
+  const existingExpiry = await prisma.$queryRaw<Array<{ subscription_expiry: Date | null }>>`
+    SELECT subscription_expiry FROM users WHERE id = ${payment.user_id} LIMIT 1
+  `;
+  const currentExpiry = existingExpiry[0]?.subscription_expiry;
+  const expiryStart = currentExpiry && currentExpiry > startedAt ? currentExpiry : startedAt;
+  const expiresAt = expiryDate(payment.duration_days, expiryStart);
   await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`
       UPDATE payments SET status = 'SUCCESS'::payment_status, provider_transaction_id = ${transactionId}, paid_at = ${startedAt}, updated_at = ${startedAt}

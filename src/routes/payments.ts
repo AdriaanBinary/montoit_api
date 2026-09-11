@@ -2,6 +2,7 @@ import express from 'express';
 import { z } from 'zod';
 import { checkAuth, AuthenticatedRequest } from '../utils/authMiddleware.js';
 import { createPackageCheckout, completePackagePayment, PackagePaymentError } from '../services/packagePaymentsService.js';
+import { isValidFlutterwaveWebhookSecret, isValidFlutterwaveWebhookSignature } from '../services/payments/flutterwaveProvider.js';
 import { errorFields, logger, maskIdentifier } from '../utils/logger.js';
 
 const router = express.Router();
@@ -33,6 +34,70 @@ router.post('/packages/checkout', checkAuth, async (req, res) => {
     }
     logger.error('payment.checkout.failed', { request_id: req.requestId, user_id: userId, package_id: parsed.data.package_id, method: parsed.data.method, ...errorFields(error) });
     return res.status(500).json({ success: false, error: 'PAYMENT_FAILED', message: 'Unable to start payment' });
+  }
+});
+
+router.post('/payments/flutterwave/webhook', async (req, res) => {
+  const rawBody = (req as express.Request & { rawBody?: Buffer }).rawBody || Buffer.from(JSON.stringify(req.body || {}));
+  const signature = typeof req.headers['flutterwave-signature'] === 'string'
+    ? req.headers['flutterwave-signature']
+    : typeof req.headers['verif-hash'] === 'string' ? req.headers['verif-hash'] : undefined;
+  const environment = process.env.FLW_USE_SANDBOX?.toLowerCase() === 'false' ? 'LIVE' : 'SANDBOX';
+  const secretHash = process.env[`FLW_${environment}_SECRET_HASH`];
+
+  if (!isValidFlutterwaveWebhookSignature(rawBody, signature, secretHash) && !isValidFlutterwaveWebhookSecret(signature, secretHash)) {
+    logger.warn('payment.webhook.rejected', { request_id: req.requestId });
+    return res.status(401).json({ success: false, error: 'INVALID_WEBHOOK_SIGNATURE' });
+  }
+
+  const payload = req.body && typeof req.body === 'object' ? req.body as Record<string, any> : {};
+  const data = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, any> : payload;
+  const eventId = typeof payload.id === 'string' || typeof payload.id === 'number' ? String(payload.id) : null;
+  const transactionId = data.id || data.transaction_id || data.transactionId;
+  const reference = data.tx_ref || data.reference || data.meta?.tx_ref;
+  const status = String(data.status || payload.status || '').toLowerCase();
+  const eventType = String(payload.event || payload.type || status || 'unknown');
+  const prisma = (await import('../db/prisma.js')).default;
+
+  if (!transactionId || !reference) {
+    logger.warn('payment.webhook.invalid', { request_id: req.requestId, event_type: eventType });
+    return res.status(400).json({ success: false, error: 'INVALID_WEBHOOK_PAYLOAD' });
+  }
+
+  const paymentRows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM payments WHERE provider_reference = ${String(reference)} LIMIT 1
+  `;
+  const paymentId = paymentRows[0]?.id || null;
+  await prisma.$executeRaw`
+    INSERT INTO payment_webhook_events (provider, provider_event_id, provider_transaction_id, payment_id, event_type, payload, processed)
+    VALUES ('flutterwave', ${eventId}, ${String(transactionId)}, ${paymentId}::uuid, ${eventType}, ${JSON.stringify(payload)}::jsonb, false)
+    ON CONFLICT (provider_event_id) DO NOTHING
+  `;
+
+  try {
+    if (!paymentId) throw new PackagePaymentError('PAYMENT_NOT_FOUND', 'Payment not found', 404);
+    if (['failed', 'cancelled', 'canceled'].includes(status)) {
+      await prisma.$executeRaw`
+        UPDATE payments SET status = 'FAILED'::payment_status, failure_reason = ${`Flutterwave webhook status: ${status}`}, updated_at = NOW()
+        WHERE id = ${paymentId}::uuid AND status <> 'SUCCESS'::payment_status
+      `;
+    } else if (['successful', 'success', 'completed', 'succeeded'].includes(status)) {
+      await completePackagePayment(paymentId, String(transactionId), req.requestId);
+    }
+    await prisma.$executeRaw`
+      UPDATE payment_webhook_events SET processed = true, processed_at = NOW()
+      WHERE provider = 'flutterwave' AND provider_transaction_id = ${String(transactionId)}
+        AND processed = false
+    `;
+    logger.info('payment.webhook.processed', { request_id: req.requestId, payment_id: paymentId, transaction_id: maskIdentifier(String(transactionId)), status });
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    await prisma.$executeRaw`
+      UPDATE payment_webhook_events SET processing_error = ${error instanceof Error ? error.message : 'Webhook processing failed'}
+      WHERE provider = 'flutterwave' AND provider_transaction_id = ${String(transactionId)} AND processed = false
+    `;
+    logger.error('payment.webhook.processing_failed', { request_id: req.requestId, payment_id: paymentId, transaction_id: maskIdentifier(String(transactionId)), ...errorFields(error) });
+    return res.status(error instanceof PackagePaymentError ? error.status : 500).json({ success: false, error: error instanceof PackagePaymentError ? error.code : 'WEBHOOK_PROCESSING_FAILED' });
   }
 });
 
