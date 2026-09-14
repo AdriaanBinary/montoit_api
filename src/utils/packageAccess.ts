@@ -4,9 +4,37 @@ import { AuthenticatedRequest } from './authMiddleware.js';
 
 export type AccountType = 'PRIVATE' | 'AGENCY';
 
-const PUBLISHED_LISTING_LIMITS: Record<AccountType, number> = {
-  PRIVATE: 1,
-  AGENCY: 10
+export type PackageFeatures = {
+  active_listings: number | null;
+  agents: number | null;
+  photos_per_listing: number | null;
+  featured_listings_per_month: number | null;
+  agent_profile: boolean;
+  verification_badge: boolean;
+  priority_placement: boolean;
+};
+
+const EMPTY_FEATURES: PackageFeatures = {
+  active_listings: null,
+  agents: null,
+  photos_per_listing: null,
+  featured_listings_per_month: null,
+  agent_profile: false,
+  verification_badge: false,
+  priority_placement: false
+};
+
+type PackageFeatureRow = {
+  key: string;
+  value_type: 'BOOLEAN' | 'INTEGER' | 'DECIMAL' | 'TEXT';
+  boolean_value: boolean | null;
+  integer_value: number | null;
+};
+
+type ActivePackage = {
+  package_name: string;
+  subscription_expiry: Date | null;
+  features: PackageFeatures;
 };
 
 export function getAccountType(role: unknown): AccountType {
@@ -19,6 +47,51 @@ export function hasActiveLegacyPackage(subscription: unknown, expiry: Date | str
   return !expiry || new Date(expiry).getTime() > Date.now();
 }
 
+function decodeFeatures(rows: PackageFeatureRow[]): PackageFeatures {
+  const features = { ...EMPTY_FEATURES };
+  for (const row of rows) {
+    if (row.value_type === 'BOOLEAN' && row.boolean_value !== null && row.key in features) {
+      (features as Record<string, boolean | number | null>)[row.key] = row.boolean_value;
+    } else if (row.value_type === 'INTEGER' && row.integer_value !== null && row.key in features) {
+      (features as Record<string, boolean | number | null>)[row.key] = row.integer_value;
+    }
+  }
+  return features;
+}
+
+export async function getActivePackageFeatures(userId: string): Promise<ActivePackage | null> {
+  const packageRows = await prisma.$queryRaw<Array<{
+    package_name: string;
+    subscription_expiry: Date | null;
+    package_id: number;
+  }>>`
+    SELECT p.name AS package_name, ue.expires_at AS subscription_expiry, ue.package_id
+    FROM user_entitlements ue
+    JOIN packages p ON p.id = ue.package_id
+    WHERE ue.user_id = ${userId}
+      AND ue.status = 'ACTIVE'::entitlement_status
+      AND (ue.expires_at IS NULL OR ue.expires_at > NOW())
+      AND p.is_active = true
+    ORDER BY ue.starts_at DESC
+    LIMIT 1
+  `;
+
+  const activePackage = packageRows[0];
+  if (!activePackage) return null;
+
+  const featureRows = await prisma.$queryRaw<PackageFeatureRow[]>`
+    SELECT key, value_type, boolean_value, integer_value
+    FROM package_features
+    WHERE package_id = ${activePackage.package_id}
+  `;
+
+  return {
+    package_name: activePackage.package_name,
+    subscription_expiry: activePackage.subscription_expiry,
+    features: decodeFeatures(featureRows)
+  };
+}
+
 export async function getPackageSummary(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -28,20 +101,32 @@ export async function getPackageSummary(userId: string) {
   if (!user) return null;
 
   const accountType = getAccountType(user.role);
-  const maxPublishedListings = PUBLISHED_LISTING_LIMITS[accountType];
+  let normalizedPackage: ActivePackage | null = null;
+  try {
+    normalizedPackage = await getActivePackageFeatures(userId);
+  } catch (error) {
+    console.warn('Normalized package lookup failed; using legacy subscription fields:', error);
+  }
+
   const publishedListings = await prisma.listing.count({
     where: { user_id: userId, is_published: true, deleted_at: null }
   });
-  const active = hasActiveLegacyPackage(user.subscription, user.subscription_expiry);
+  const active = normalizedPackage !== null || hasActiveLegacyPackage(user.subscription, user.subscription_expiry);
+  const features = normalizedPackage?.features ?? {
+    ...EMPTY_FEATURES,
+    active_listings: accountType === 'PRIVATE' ? 1 : 10
+  };
+  const maxPublishedListings = features.active_listings ?? 0;
 
   return {
     account_type: accountType,
-    package_name: active ? user.subscription : null,
+    package_name: normalizedPackage?.package_name ?? (active ? user.subscription : null),
     subscription_status: active ? 'ACTIVE' : user.subscription_expiry && new Date(user.subscription_expiry).getTime() <= Date.now() ? 'EXPIRED' : 'INACTIVE',
-    subscription_expiry: user.subscription_expiry,
+    subscription_expiry: normalizedPackage?.subscription_expiry ?? user.subscription_expiry,
     published_listings: publishedListings,
     max_published_listings: maxPublishedListings,
-    remaining_published_listings: Math.max(0, maxPublishedListings - publishedListings)
+    remaining_published_listings: Math.max(0, maxPublishedListings - publishedListings),
+    features
   } as const;
 }
 

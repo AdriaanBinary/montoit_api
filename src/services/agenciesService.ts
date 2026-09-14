@@ -4,6 +4,7 @@ import { Request, RequestHandler } from 'express';
 import agenciesDb from '../db/agencies.js';
 import usersDb from '../db/users.js';
 import { AuthenticatedRequest } from '../utils/authMiddleware.js';
+import { getActivePackageFeatures } from '../utils/packageAccess.js';
 
 interface CreateAgencyRequestBody {
   name?: string;
@@ -355,6 +356,19 @@ export const inviteAgencyAgent: RequestHandler = async (req, res) => {
   const agency = await agenciesDb.getOwnedAgencyById(agencyId, ownerUserId);
   if (!agency) return res.status(404).json({ success: false, error: 'Agency application not found' });
   if (agency.status !== 'ACTIVE') return res.status(409).json({ success: false, error: 'Only active agencies can invite agents' });
+
+  const packageAccess = await getActivePackageFeatures(ownerUserId);
+  const agentLimit = packageAccess?.features.agents;
+  if (agentLimit !== null && agentLimit !== undefined) {
+    const memberCount = await agenciesDb.getAgencyMemberCount(agencyId);
+    if (memberCount >= agentLimit) {
+      return res.status(403).json({
+        success: false,
+        error: 'AGENT_LIMIT_REACHED',
+        message: `Your package allows ${agentLimit} agency agent${agentLimit === 1 ? '' : 's'}.`
+      });
+    }
+  }
 
   const invitedUser = await agenciesDb.findUserForInvitation({ email: body.email?.trim(), userId: body.user_id?.trim() });
   if (!invitedUser) return res.status(404).json({ success: false, error: 'Registered user not found' });

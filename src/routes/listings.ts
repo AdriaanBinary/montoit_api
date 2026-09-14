@@ -768,7 +768,7 @@ router.post('/listings/:id/unpublish', checkAuth, requireActivePackage, (req, re
 
   return unpublishListing(req, res, next);
 });
-router.post('/listings/:id/images', checkAuth, (req, res, next) => {
+router.post('/listings/:id/images', checkAuth, requireActivePackage, (req, res, next) => {
   const parsedParams = listingIdParamsSchema.safeParse(req.params);
 
   if (!parsedParams.success) {

@@ -519,6 +519,10 @@ const listingsDb = {
     return toRecord(created) as unknown as ListingImageInsertResult;
   },
 
+  countListingImages: async function(listingId: number): Promise<number> {
+    return prisma.listingImage.count({ where: { listing_id: listingId } });
+  },
+
   getListingImages: async function(listingId: number): Promise<ListingImageRecord[]> {
     const images = await prisma.listingImage.findMany({
       where: {

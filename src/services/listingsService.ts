@@ -23,6 +23,7 @@ import { LocationValidationError, validateListingLocationIds } from '../db/locat
 import usersDb from '../db/users.js';
 import agenciesDb from '../db/agencies.js';
 import { AuthenticatedRequest } from '../utils/authMiddleware.js';
+import { getActivePackageFeatures } from '../utils/packageAccess.js';
 import { attachPublicImageUrls } from './publicListingsService.js';
 
 interface ListingCreateInput {
@@ -309,6 +310,17 @@ export const createListing: RequestHandler = async (req, res) => {
     const userRole = await usersDb.getUserRole(userId);
     const payload = normalizeCreateListingInput(req.body as Partial<ListingCreateInput>, userId);
 
+    if (payload.verified) {
+      const packageAccess = await getActivePackageFeatures(userId);
+      if (!packageAccess?.features.verification_badge) {
+        return res.status(403).json({
+          success: false,
+          error: 'VERIFICATION_BADGE_NOT_INCLUDED',
+          message: 'Your package does not include a verification badge.'
+        });
+      }
+    }
+
     const agencyId = await getManagedAgencyId(userId);
 
     if (requiresAgentForPropertyType(payload.property_type) && !isAgentRole(userRole)) {
@@ -533,6 +545,20 @@ export const uploadListingImages: RequestHandler = async (req, res) => {
     await listingsDb.ensureListingImagesTable();
 
     const images = Array.isArray(body.images) ? body.images : [];
+    const packageAccess = await getActivePackageFeatures(userId);
+    const photoLimit = packageAccess?.features.photos_per_listing;
+    if (photoLimit !== null && photoLimit !== undefined) {
+      const existingImageCount = await listingsDb.countListingImages(listingId);
+      if (existingImageCount + images.length > photoLimit) {
+        return res.status(403).json({
+          success: false,
+          error: 'PHOTO_LIMIT_REACHED',
+          message: `Your package allows ${photoLimit} photo${photoLimit === 1 ? '' : 's'} per listing.`,
+          remaining: Math.max(0, photoLimit - existingImageCount)
+        });
+      }
+    }
+
     const insertedImages = [] as Array<Record<string, unknown>>;
     const bucketName = process.env.AWS_S3_BUCKET ?? 'no-bucket-specified';
 
@@ -922,6 +948,17 @@ export const updateListing: RequestHandler = async (req, res) => {
           success: false,
           error: 'Forbidden',
           message: 'Only agents can create commercial property listings'
+        });
+      }
+    }
+
+    if (body.verified === true) {
+      const packageAccess = await getActivePackageFeatures(userId);
+      if (!packageAccess?.features.verification_badge) {
+        return res.status(403).json({
+          success: false,
+          error: 'VERIFICATION_BADGE_NOT_INCLUDED',
+          message: 'Your package does not include a verification badge.'
         });
       }
     }

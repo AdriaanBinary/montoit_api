@@ -404,6 +404,10 @@ const agenciesDb = {
     })));
   },
 
+  getAgencyMemberCount: async function(agencyId: number): Promise<number> {
+    return prisma.agencyAgent.count({ where: { agency_id: agencyId } });
+  },
+
   getAgencyMembership: async function(userId: string): Promise<Record<string, unknown> | null> {
     const membership = await prisma.agencyAgent.findUnique({
       where: { user_id: userId },
