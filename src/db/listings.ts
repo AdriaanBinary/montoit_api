@@ -617,6 +617,33 @@ const listingsDb = {
       .map((listing: { id: unknown }) => listing.id)
       .filter((id: unknown): id is number => Number.isInteger(id));
 
+    const promotionRows = listingIds.length === 0
+      ? []
+      : await prisma.$queryRaw<Array<{ id: number; is_featured: boolean; has_priority: boolean }>>`
+          SELECT l.id,
+            EXISTS (
+              SELECT 1 FROM listing_promotions lp
+              WHERE lp.listing_id = l.id
+                AND lp.type = 'FEATURED'::listing_promotion_type
+                AND lp.status = 'ACTIVE'::listing_promotion_status
+                AND lp.starts_at <= NOW() AND lp.expires_at > NOW()
+            ) AS is_featured,
+            EXISTS (
+              SELECT 1
+              FROM user_entitlements ue
+              JOIN package_features pf ON pf.package_id = ue.package_id
+              WHERE ue.user_id = l.user_id
+                AND ue.status = 'ACTIVE'::entitlement_status
+                AND (ue.expires_at IS NULL OR ue.expires_at > NOW())
+                AND pf.key = 'priority_placement'
+                AND pf.value_type = 'BOOLEAN'
+                AND pf.boolean_value = true
+            ) AS has_priority
+          FROM listings l
+          WHERE l.id IN (${Prisma.join(listingIds)})
+        `;
+    const promotionsByListingId = new Map(promotionRows.map((row) => [row.id, row]));
+
     if (listingIds.length === 0) {
       return (await attachListingLocations(toRecords(listings))).map((listing) => ({ ...listing, images: [] }));
     }
@@ -645,7 +672,9 @@ const listingsDb = {
 
       return {
         ...listing,
-        images
+        images,
+        is_featured: promotionsByListingId.get(listingId)?.is_featured === true,
+        has_priority_placement: promotionsByListingId.get(listingId)?.has_priority === true
       };
     });
   },
