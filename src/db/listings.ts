@@ -1,4 +1,5 @@
 import prisma from './prisma.js';
+import { Prisma } from '@prisma/client';
 import { ensureCameroonLocationDataInitialized } from './locations.js';
 
 function asString(value: unknown): string | null {
@@ -647,6 +648,107 @@ const listingsDb = {
         images
       };
     });
+  },
+
+  getRankedPublicListings: async function(
+    limit: number,
+    offset: number,
+    where: Record<string, unknown>,
+    orderBy: Record<string, unknown>
+  ): Promise<Record<string, unknown>[]> {
+    const matchingListings = await prisma.listing.findMany({
+      where,
+      orderBy,
+      select: { id: true }
+    });
+    const listingIds = matchingListings.map((listing) => listing.id);
+    if (listingIds.length === 0) return [];
+
+    const rankingRows = await prisma.$queryRaw<Array<{ id: number; is_featured: boolean; has_priority: boolean; exposure: bigint }>>`
+      SELECT l.id,
+        EXISTS (
+          SELECT 1 FROM listing_promotions lp
+          WHERE lp.listing_id = l.id
+            AND lp.type = 'FEATURED'::listing_promotion_type
+            AND lp.status = 'ACTIVE'::listing_promotion_status
+            AND lp.starts_at <= NOW() AND lp.expires_at > NOW()
+        ) AS is_featured,
+        EXISTS (
+          SELECT 1
+          FROM user_entitlements ue
+          JOIN package_features pf ON pf.package_id = ue.package_id
+          WHERE ue.user_id = l.user_id
+            AND ue.status = 'ACTIVE'::entitlement_status
+            AND (ue.expires_at IS NULL OR ue.expires_at > NOW())
+            AND pf.key = 'priority_placement'
+            AND pf.value_type = 'BOOLEAN'
+            AND pf.boolean_value = true
+        ) AS has_priority,
+        COALESCE((
+          SELECT COUNT(*)::bigint FROM listing_impressions li
+          WHERE li.listing_id = l.id
+            AND li.was_featured = true
+            AND li.created_at >= NOW() - INTERVAL '30 days'
+        ), 0)::bigint AS exposure
+      FROM listings l
+      WHERE l.id IN (${Prisma.join(listingIds)})
+    `;
+
+    const originalPosition = new Map(listingIds.map((id, index) => [id, index]));
+    const rankingById = new Map(rankingRows.map((row) => [row.id, row]));
+    const featuredIds = rankingRows
+      .filter((row) => row.is_featured)
+      .sort((left, right) => Number(left.exposure - right.exposure) || (originalPosition.get(left.id)! - originalPosition.get(right.id)!))
+      .map((row) => row.id);
+    const otherIds = rankingRows
+      .filter((row) => !row.is_featured)
+      .sort((left, right) => Number(right.has_priority) - Number(left.has_priority) || (originalPosition.get(left.id)! - originalPosition.get(right.id)!))
+      .map((row) => row.id);
+
+    const rankedIds: number[] = [];
+    let featuredIndex = 0;
+    let otherIndex = 0;
+    while (featuredIndex < featuredIds.length || otherIndex < otherIds.length) {
+      if (featuredIndex < featuredIds.length) rankedIds.push(featuredIds[featuredIndex++]);
+      for (let slot = 0; slot < 2 && otherIndex < otherIds.length; slot += 1) {
+        rankedIds.push(otherIds[otherIndex++]);
+      }
+    }
+
+    const selectedIds = rankedIds.slice(offset, offset + limit);
+    if (selectedIds.length === 0) return [];
+    await this.recordListingImpressions(selectedIds.map((id, index) => ({
+      id,
+      position: offset + index + 1,
+      was_featured: rankingById.get(id)?.is_featured === true
+    })));
+    const listings = await this.getPublicListings(selectedIds.length, 0, { ...where, id: { in: selectedIds } }, orderBy);
+    const listingsById = new Map(listings.map((listing) => [Number(listing.id), listing]));
+    const rankedListings = selectedIds
+      .map((id) => {
+        const listing = listingsById.get(id);
+        const ranking = rankingById.get(id);
+        return listing
+          ? {
+              ...listing,
+              is_featured: ranking?.is_featured === true,
+              has_priority_placement: ranking?.has_priority === true
+            }
+          : null;
+      })
+      .filter((listing) => listing !== null);
+
+    return rankedListings;
+  },
+
+  recordListingImpressions: async function(listings: Array<{ id: number; promotion_id?: string | null; was_featured: boolean; position: number }>): Promise<void> {
+    if (listings.length === 0) return;
+    for (const listing of listings) {
+      await prisma.$executeRaw`
+        INSERT INTO listing_impressions (listing_id, promotion_id, position, was_featured)
+        VALUES (${listing.id}, ${listing.promotion_id ?? null}::uuid, ${listing.position}, ${listing.was_featured})
+      `;
+    }
   },
 
   reorderListingImages: async function(

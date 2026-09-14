@@ -32,6 +32,7 @@ type PackageFeatureRow = {
 };
 
 type ActivePackage = {
+  package_id: number;
   package_name: string;
   subscription_expiry: Date | null;
   features: PackageFeatures;
@@ -86,6 +87,7 @@ export async function getActivePackageFeatures(userId: string): Promise<ActivePa
   `;
 
   return {
+    package_id: activePackage.package_id,
     package_name: activePackage.package_name,
     subscription_expiry: activePackage.subscription_expiry,
     features: decodeFeatures(featureRows)

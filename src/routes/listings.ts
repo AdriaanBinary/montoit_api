@@ -16,6 +16,7 @@ import {
   updateListing,
   uploadListingImages
 } from '../services/listingsService.js';
+import { featureListing, getListingPromotions, unfeatureListing } from '../services/listingPromotionsService.js';
 import { registerApiRoute } from '../docs/swagger.js';
 import { getPublicListings } from '../services/publicListingsService.js';
 import { checkAuth } from '../utils/authMiddleware.js';
@@ -788,6 +789,9 @@ router.post('/listings/:id/images', checkAuth, requireActivePackage, (req, res, 
   req.body = parsedBody.data;
   return uploadListingImages(req, res, next);
 });
+router.post('/listings/:id/feature', checkAuth, featureListing);
+router.delete('/listings/:id/feature', checkAuth, unfeatureListing);
+router.get('/listings/:id/promotions', checkAuth, getListingPromotions);
 router.post('/listings/:listingId/images/:imageId/confirm', checkAuth, (req, res, next) => {
   const parsedParams = listingImageParamsSchema.safeParse(req.params);
 

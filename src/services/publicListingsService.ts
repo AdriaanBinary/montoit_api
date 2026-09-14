@@ -474,7 +474,7 @@ export const getPublicListings: RequestHandler = async (req, res) => {
     const safePage = Math.min(currentPage, pages);
     const safeOffset = (safePage - 1) * itemsPerPage;
 
-    const listings = await listingsDb.getPublicListings(itemsPerPage, safeOffset, where, orderBy);
+    const listings = await listingsDb.getRankedPublicListings(itemsPerPage, safeOffset, where, orderBy);
     const listingsWithOptions = await Promise.all(
       listings.map(async (listing) => addListingGeneralFees(await addListingOptions(listing)))
     );
