@@ -96,6 +96,28 @@ export async function getListingOptions(listingId: number): Promise<ListingOptio
   return selections.map((selection) => toOptionRecord(selection.option));
 }
 
+export async function getListingsOptions(listingIds: number[]): Promise<Map<number, ListingOptionRecord[]>> {
+  if (listingIds.length === 0) return new Map();
+
+  const selections = await prisma.listingOptionSelection.findMany({
+    where: { listing_id: { in: listingIds }, option: { is_active: true } },
+    orderBy: { option: { name: 'asc' } },
+    select: {
+      listing_id: true,
+      option: { select: { id: true, name: true, type: true } }
+    }
+  });
+
+  const optionsByListingId = new Map<number, ListingOptionRecord[]>();
+  for (const selection of selections) {
+    const options = optionsByListingId.get(selection.listing_id) ?? [];
+    options.push(toOptionRecord(selection.option));
+    optionsByListingId.set(selection.listing_id, options);
+  }
+
+  return optionsByListingId;
+}
+
 export async function addListingOptions<T extends Record<string, unknown>>(listing: T): Promise<T & {
   option_ids: number[];
   options: ListingOptionRecord[];

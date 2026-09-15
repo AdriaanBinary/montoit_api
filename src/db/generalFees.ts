@@ -102,6 +102,52 @@ export async function getListingGeneralFees(listingId: number) {
   };
 }
 
+export async function getListingsGeneralFees(listingIds: number[]): Promise<Map<number, {
+  general_fees: { fee_id: number; name: string; amount: number }[];
+  other_general_fees: { description: string; amount: number }[];
+}>> {
+  const feesByListingId = new Map<number, {
+    general_fees: { fee_id: number; name: string; amount: number }[];
+    other_general_fees: { description: string; amount: number }[];
+  }>();
+
+  if (listingIds.length === 0) return feesByListingId;
+
+  const [selectedFees, otherFees] = await Promise.all([
+    prisma.listingGeneralFeeSelection.findMany({
+      where: { listing_id: { in: listingIds }, fee: { is_active: true } },
+      orderBy: { fee: { name: 'asc' } },
+      select: { listing_id: true, fee_id: true, amount: true, fee: { select: { id: true, name: true } } }
+    }),
+    prisma.listingOtherGeneralFee.findMany({
+      where: { listing_id: { in: listingIds } },
+      orderBy: { id: 'asc' },
+      select: { listing_id: true, description: true, amount: true }
+    })
+  ]);
+
+  for (const listingId of listingIds) {
+    feesByListingId.set(listingId, { general_fees: [], other_general_fees: [] });
+  }
+
+  for (const selection of selectedFees) {
+    feesByListingId.get(selection.listing_id)?.general_fees.push({
+      fee_id: selection.fee_id,
+      name: selection.fee.name,
+      amount: Number(selection.amount)
+    });
+  }
+
+  for (const fee of otherFees) {
+    feesByListingId.get(fee.listing_id)?.other_general_fees.push({
+      description: fee.description,
+      amount: Number(fee.amount)
+    });
+  }
+
+  return feesByListingId;
+}
+
 export async function addListingGeneralFees<T extends Record<string, unknown>>(listing: T): Promise<T> {
   return { ...listing, ...(await getListingGeneralFees(Number(listing.id))) };
 }

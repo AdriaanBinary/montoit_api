@@ -185,7 +185,78 @@ async function attachListingLocationDetails(listing: Record<string, unknown>): P
 }
 
 async function attachListingLocations(listings: Record<string, unknown>[]): Promise<Record<string, unknown>[]> {
-  return Promise.all(listings.map((listing) => attachListingLocationDetails(listing)));
+  await ensureCameroonLocationDataInitialized();
+
+  const listingIds = listings
+    .map((listing) => listing.id)
+    .filter((id): id is number => typeof id === 'number' && Number.isInteger(id));
+
+  if (listingIds.length === 0) {
+    return listings.map((listing) => ({
+      ...listing,
+      location_details: {
+        region: null,
+        city: null,
+        municipality: null,
+        neighborhood: null
+      } satisfies ListingLocationDetails
+    }));
+  }
+
+  const rows = await prisma.$queryRaw<Array<{
+    listing_id: number;
+    region_id: number | null;
+    region_name: string | null;
+    city_id: number | null;
+    city_name: string | null;
+    municipality_id: number | null;
+    municipality_name: string | null;
+    neighborhood_id: number | null;
+    neighborhood_name: string | null;
+    neighborhood_aliases: string[] | null;
+  }>>`
+    SELECT l.id AS listing_id,
+           r.id AS region_id, r.name AS region_name,
+           c.id AS city_id, c.name AS city_name,
+           m.id AS municipality_id, m.name AS municipality_name,
+           n.id AS neighborhood_id, n.name AS neighborhood_name,
+           n.aliases AS neighborhood_aliases
+      FROM listings l
+      LEFT JOIN regions r ON r.id = l.region_id
+      LEFT JOIN cities c ON c.id = l.city_id
+      LEFT JOIN municipalities m ON m.id = l.municipality_id
+      LEFT JOIN neighborhoods n ON n.id = l.neighborhood_id
+     WHERE l.id IN (${Prisma.join(listingIds)})
+  `;
+
+  const detailsByListingId = new Map(rows.map((row) => [row.listing_id, {
+    region: row.region_id !== null && row.region_name
+      ? { id: row.region_id, name: row.region_name }
+      : null,
+    city: row.city_id !== null && row.city_name
+      ? { id: row.city_id, name: row.city_name }
+      : null,
+    municipality: row.municipality_id !== null && row.municipality_name
+      ? { id: row.municipality_id, name: row.municipality_name }
+      : null,
+    neighborhood: row.neighborhood_id !== null && row.neighborhood_name
+      ? {
+          id: row.neighborhood_id,
+          name: row.neighborhood_name,
+          aliases: Array.isArray(row.neighborhood_aliases) ? row.neighborhood_aliases : []
+        }
+      : null
+  } satisfies ListingLocationDetails]));
+
+  return listings.map((listing) => ({
+    ...listing,
+    location_details: detailsByListingId.get(Number(listing.id)) ?? {
+      region: null,
+      city: null,
+      municipality: null,
+      neighborhood: null
+    }
+  }));
 }
 
 export interface ListingImageInsertResult {
@@ -772,12 +843,15 @@ const listingsDb = {
 
   recordListingImpressions: async function(listings: Array<{ id: number; promotion_id?: string | null; was_featured: boolean; position: number }>): Promise<void> {
     if (listings.length === 0) return;
-    for (const listing of listings) {
-      await prisma.$executeRaw`
-        INSERT INTO listing_impressions (listing_id, promotion_id, position, was_featured)
-        VALUES (${listing.id}, ${listing.promotion_id ?? null}::uuid, ${listing.position}, ${listing.was_featured})
-      `;
-    }
+
+    const values = listings.map((listing) => Prisma.sql`
+      (${listing.id}, ${listing.promotion_id ?? null}::uuid, ${listing.position}, ${listing.was_featured})
+    `);
+
+    await prisma.$executeRaw`
+      INSERT INTO listing_impressions (listing_id, promotion_id, position, was_featured)
+      VALUES ${Prisma.join(values)}
+    `;
   },
 
   reorderListingImages: async function(

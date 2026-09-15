@@ -98,6 +98,7 @@ model Listing {
   generalFeeSelections ListingGeneralFeeSelection[]
   otherGeneralFees    ListingOtherGeneralFee[]
 
+  @@index([status, is_published, deleted_at, created_at])
   @@map("listings")
 }
 
@@ -180,6 +181,7 @@ model ListingImage {
   upload_confirmed Boolean  @default(false)
   created_at       DateTime @default(now()) @db.Timestamptz(6)
 
+  @@index([listing_id, upload_confirmed, sort_order, created_at])
   @@map("listing_images")
 }
 

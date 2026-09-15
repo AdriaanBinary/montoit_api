@@ -2,8 +2,8 @@ import { Request, RequestHandler } from 'express';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import listingsDb from '../db/listings.js';
-import { addListingOptions } from '../db/listingOptions.js';
-import { addListingGeneralFees } from '../db/generalFees.js';
+import { getListingsOptions } from '../db/listingOptions.js';
+import { getListingsGeneralFees } from '../db/generalFees.js';
 
 interface PublicListingsRequestQuery {
   mode?: 'buy' | 'rent' | 'commercial' | string;
@@ -475,9 +475,22 @@ export const getPublicListings: RequestHandler = async (req, res) => {
     const safeOffset = (safePage - 1) * itemsPerPage;
 
     const listings = await listingsDb.getRankedPublicListings(itemsPerPage, safeOffset, where, orderBy);
-    const listingsWithOptions = await Promise.all(
-      listings.map(async (listing) => addListingGeneralFees(await addListingOptions(listing)))
-    );
+    const listingIds = listings.map((listing) => Number(listing.id)).filter(Number.isInteger);
+    const [optionsByListingId, feesByListingId] = await Promise.all([
+      getListingsOptions(listingIds),
+      getListingsGeneralFees(listingIds)
+    ]);
+    const listingsWithOptions = listings.map((listing) => {
+      const listingId = Number(listing.id);
+      const options = optionsByListingId.get(listingId) ?? [];
+      const fees = feesByListingId.get(listingId) ?? { general_fees: [], other_general_fees: [] };
+      return {
+        ...listing,
+        option_ids: options.map((option) => option.id),
+        options,
+        ...fees
+      };
+    });
     const hydratedListings = await attachPublicImageUrls(listingsWithOptions);
 
     return res.json({
