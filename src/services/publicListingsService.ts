@@ -88,7 +88,9 @@ export async function attachPublicIdentityUrls(listings: ListingRecord[]): Promi
   const bucketName = process.env.AWS_S3_BUCKET ?? 'property-images';
   return Promise.all(listings.map(async (listing) => {
     const agency = listing.agency as ListingRecord | null | undefined;
-    const assignedAgent = listing.assignedAgent as ListingRecord | null | undefined;
+    const assignedRelation = listing.assignedAgent as ListingRecord | null | undefined;
+    const creator = listing.creator as ListingRecord | null | undefined;
+    const assignedAgent = assignedRelation || (creator?.role === 'AGENT' ? creator : null);
     const [agencyLogoUrl, agentAvatarUrl] = await Promise.all([
       typeof agency?.logo_url === 'string' && agency.logo_url
         ? buildPresignedGetUrl(bucketName, agency.logo_url).catch(() => null)

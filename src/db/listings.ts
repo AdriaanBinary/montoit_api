@@ -93,6 +93,7 @@ const listingCreatorInclude = {
       id: true,
       username: true,
       role: true,
+      avatar_url: true,
       email: true,
       phone: true
     }
