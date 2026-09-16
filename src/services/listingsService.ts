@@ -348,6 +348,7 @@ export const createListing: RequestHandler = async (req, res) => {
       Object.assign(payload, {
         agency_id: listingAgencyId,
         listing_owner_type: 'AGENT',
+        ...(userRole === 'AGENT' ? { assigned_agent_id: userId } : {}),
         agent_listing_limit: userRole === 'AGENCY_OWNER' ? null : listingLimit
       });
     }

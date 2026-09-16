@@ -5,7 +5,10 @@ import {
   addFavoriteListing,
   getFavoriteListings,
   removeFavoriteListing,
-  getCurrentUser
+  getCurrentUser,
+  createAvatarUpload,
+  confirmAvatarUpload,
+  removeAvatar
 } from '../services/usersService.js';
 import { checkAuth } from '../utils/authMiddleware.js';
 import { AuthenticatedRequest } from '../utils/authMiddleware.js';
@@ -14,7 +17,23 @@ import { errorFields, logger } from '../utils/logger.js';
 
 const router = express.Router();
 
+const avatarUploadBodySchema = z.object({ file_name: z.string().min(1).max(255), content_type: z.string().regex(/^image\//) });
+const avatarConfirmBodySchema = z.object({ object_key: z.string().min(1) });
+
 router.get('/users/me', checkAuth, getCurrentUser);
+router.post('/users/me/avatar', checkAuth, (req, res, next) => {
+  const parsed = avatarUploadBodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: 'Invalid avatar upload request' });
+  req.body = parsed.data;
+  return createAvatarUpload(req, res, next);
+});
+router.post('/users/me/avatar/confirm', checkAuth, (req, res, next) => {
+  const parsed = avatarConfirmBodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: 'Invalid avatar confirmation request' });
+  req.body = parsed.data;
+  return confirmAvatarUpload(req, res, next);
+});
+router.delete('/users/me/avatar', checkAuth, removeAvatar);
 
 router.get('/users/me/package', checkAuth, async (req, res) => {
   const userId = (req as AuthenticatedRequest).user?.user_id;

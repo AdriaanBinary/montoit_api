@@ -84,6 +84,28 @@ function asListingImages(value: unknown): ListingImageRecord[] {
     : [];
 }
 
+async function attachPublicIdentityUrls(listings: ListingRecord[]): Promise<ListingRecord[]> {
+  const bucketName = process.env.AWS_S3_BUCKET ?? 'property-images';
+  return Promise.all(listings.map(async (listing) => {
+    const agency = listing.agency as ListingRecord | null | undefined;
+    const assignedAgent = listing.assignedAgent as ListingRecord | null | undefined;
+    const [agencyLogoUrl, agentAvatarUrl] = await Promise.all([
+      typeof agency?.logo_url === 'string' && agency.logo_url
+        ? buildPresignedGetUrl(bucketName, agency.logo_url).catch(() => null)
+        : Promise.resolve(null),
+      typeof assignedAgent?.avatar_url === 'string' && assignedAgent.avatar_url
+        ? buildPresignedGetUrl(bucketName, assignedAgent.avatar_url).catch(() => null)
+        : Promise.resolve(null)
+    ]);
+
+    return {
+      ...listing,
+      agency: agency ? { ...agency, logo_url: agencyLogoUrl } : agency,
+      assignedAgent: assignedAgent ? { ...assignedAgent, avatar_url: agentAvatarUrl } : assignedAgent
+    };
+  }));
+}
+
 export async function attachPublicImageUrls(listings: ListingRecord[]): Promise<ListingRecord[]> {
   const bucketName = process.env.AWS_S3_BUCKET ?? 'property-images';
 
@@ -491,7 +513,7 @@ export const getPublicListings: RequestHandler = async (req, res) => {
         ...fees
       };
     });
-    const hydratedListings = await attachPublicImageUrls(listingsWithOptions);
+    const hydratedListings = await attachPublicImageUrls(await attachPublicIdentityUrls(listingsWithOptions));
 
     return res.json({
       success: true,

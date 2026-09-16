@@ -72,6 +72,11 @@ function buildAgencyDocumentObjectKey(agencyId: number, documentType: string, fi
   return `agencies/${agencyId}/documents/${Date.now()}-${documentType.toLowerCase()}-${cleanedFileName}`;
 }
 
+function buildAgencyLogoObjectKey(agencyId: number, fileName: string): string {
+  const cleanedFileName = fileName.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-');
+  return `agencies/${agencyId}/branding/${Date.now()}-${cleanedFileName}`;
+}
+
 async function buildPresignedPutUrl(bucket: string, key: string, contentType: string): Promise<string> {
   return getSignedUrl(s3Client, new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: contentType }), { expiresIn: 3600 });
 }
@@ -210,7 +215,40 @@ export const getMyAgency: RequestHandler = async (req, res) => {
     return res.status(404).json({ success: false, error: 'Agency application not found' });
   }
 
-  return res.json({ success: true, agency });
+  const bucket = process.env.AWS_S3_BUCKET ?? 'property-images';
+  const logo_url = typeof agency.logo_url === 'string' && agency.logo_url
+    ? await buildPresignedGetUrl(bucket, agency.logo_url).catch(() => null)
+    : null;
+  return res.json({ success: true, agency: { ...agency, logo_url } });
+};
+
+export const createAgencyLogoUpload: RequestHandler = async (req, res) => {
+  const userId = (req as AuthenticatedRequest).user?.user_id;
+  const agencyId = Number(req.params.id);
+  const body = (req.body ?? {}) as { file_name?: string; content_type?: string };
+  if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+  if (!Number.isInteger(agencyId) || !body.file_name?.trim() || !body.content_type?.startsWith('image/')) {
+    return res.status(400).json({ success: false, error: 'An image file_name and content_type are required' });
+  }
+  const agency = await agenciesDb.getOwnedAgencyById(agencyId, userId);
+  if (!agency) return res.status(404).json({ success: false, error: 'Agency application not found' });
+  const objectKey = buildAgencyLogoObjectKey(agencyId, body.file_name.trim());
+  const bucket = process.env.AWS_S3_BUCKET ?? 'property-images';
+  return res.status(201).json({ success: true, upload_url: await buildPresignedPutUrl(bucket, objectKey, body.content_type), object_key: objectKey, bucket });
+};
+
+export const confirmAgencyLogoUpload: RequestHandler = async (req, res) => {
+  const userId = (req as AuthenticatedRequest).user?.user_id;
+  const agencyId = Number(req.params.id);
+  const objectKey = String((req.body ?? {}).object_key ?? '');
+  if (!userId || !Number.isInteger(agencyId) || !objectKey) return res.status(400).json({ success: false, error: 'Invalid logo upload' });
+  const agency = await agenciesDb.getOwnedAgencyById(agencyId, userId);
+  if (!agency) return res.status(404).json({ success: false, error: 'Agency application not found' });
+  const bucket = process.env.AWS_S3_BUCKET ?? 'property-images';
+  if (!(await objectExistsInS3(bucket, objectKey))) return res.status(404).json({ success: false, error: 'Uploaded logo not found in storage' });
+  const updatedAgency = await agenciesDb.updateAgencyLogo(agencyId, objectKey);
+  const logo_url = await buildPresignedGetUrl(bucket, objectKey);
+  return res.json({ success: true, agency: updatedAgency ? { ...updatedAgency, logo_url } : updatedAgency });
 };
 
 export const uploadAgencyDocument: RequestHandler = async (req, res) => {

@@ -20,11 +20,20 @@ const usersDb = {
         role: true,
         subscription: true,
         subscription_expiry: true,
+        avatar_url: true,
         created_at: true
       }
     });
 
     return user ? toRecord(user) : null;
+  },
+
+  updateAvatar: async function(userId: string, avatarKey: string | null): Promise<Record<string, unknown> | null> {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { avatar_url: avatarKey, updated_at: new Date() }
+    });
+    return toRecord(user);
   },
 
   getUserRole: async function(userId: string): Promise<string | null> {

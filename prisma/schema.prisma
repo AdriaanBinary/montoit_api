@@ -20,6 +20,7 @@ model User {
   role                UserRole  @default(PRIVATE)
   subscription        String?   @default("free") @db.VarChar(50)
   subscription_expiry DateTime? @db.Timestamptz(6)
+  avatar_url          String?   @db.Text
   created_at          DateTime  @default(now()) @db.Timestamptz(6)
   updated_at          DateTime  @default(now()) @db.Timestamptz(6)
 
@@ -30,6 +31,7 @@ model User {
   createdAgencies            Agency[]          @relation("AgencyCreator")
   reviewedAgencies           Agency[]          @relation("AgencyReviewer")
   agencyMemberships          AgencyAgent[]
+  assignedListings            Listing[]         @relation("ListingAssignedAgent")
   receivedAgencyInvitations  AgencyInvitation[] @relation("AgencyInvitationRecipient")
   sentAgencyInvitations      AgencyInvitation[] @relation("AgencyInvitationSender")
 
@@ -82,6 +84,7 @@ model Listing {
   neighborhood_id    Int?
   listing_owner_type ListingOwnerType? @default(PRIVATE)
   agency_id          Int?
+  assigned_agent_id   String?          @db.VarChar(16)
   is_published       Boolean           @default(false)
   rights_confirmed    Boolean           @default(false)
   rights_confirmed_at DateTime?         @db.Timestamptz(6)
@@ -92,6 +95,7 @@ model Listing {
 
   enquiries          ListingEnquiry[]
   creator            User              @relation(fields: [user_id], references: [id])
+  assignedAgent      User?             @relation("ListingAssignedAgent", fields: [assigned_agent_id], references: [id], onDelete: SetNull)
   agency             Agency?           @relation(fields: [agency_id], references: [id])
   favorites          UserFavorite[]
   optionSelections   ListingOptionSelection[]
@@ -226,6 +230,7 @@ model Agency {
   email              String?      @db.VarChar(255)
   phone              String?      @db.VarChar(50)
   website            String?      @db.Text
+  logo_url           String?      @db.Text
   address_line1      String?      @db.Text
   address_line2      String?      @db.Text
   region_id          Int?

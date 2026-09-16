@@ -96,6 +96,22 @@ const listingCreatorInclude = {
       email: true,
       phone: true
     }
+  },
+  agency: {
+    select: {
+      id: true,
+      name: true,
+      logo_url: true
+    }
+  },
+  assignedAgent: {
+    select: {
+      id: true,
+      username: true,
+      avatar_url: true,
+      email: true,
+      phone: true
+    }
   }
 };
 

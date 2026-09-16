@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { registerApiRoute } from '../docs/swagger.js';
 import {
 	confirmAgencyDocumentUpload,
+	confirmAgencyLogoUpload,
+	createAgencyLogoUpload,
 	createAgency,
 	getMyAgency,
 	getAgencyAgents,
@@ -47,6 +49,11 @@ const agencyDocumentUploadBodySchema = z.object({
 	file_name: z.string().min(1).max(255),
 	content_type: z.string().min(1).max(100)
 });
+const agencyLogoUploadBodySchema = z.object({
+	file_name: z.string().min(1).max(255),
+	content_type: z.string().regex(/^image\//)
+});
+const agencyLogoConfirmBodySchema = z.object({ object_key: z.string().min(1) });
 const agencyReviewBodySchema = z.object({
 	decision: z.enum(['ACTIVE', 'REJECTED']),
 	review_note: z.string().max(4000).optional()
@@ -213,6 +220,24 @@ router.post('/agencies', checkAuth, requireActivePackage, (req, res, next) => {
 });
 
 router.get('/agencies/me', checkAuth, getMyAgency);
+
+router.post('/agencies/:id/logo', checkAuth, requireActivePackage, (req, res, next) => {
+	const parsedParams = agencyIdParamsSchema.safeParse(req.params);
+	const parsedBody = agencyLogoUploadBodySchema.safeParse(req.body);
+	if (!parsedParams.success || !parsedBody.success) return res.status(400).json({ success: false, error: 'Invalid logo upload request' });
+	req.params = parsedParams.data as unknown as typeof req.params;
+	req.body = parsedBody.data;
+	return createAgencyLogoUpload(req, res, next);
+});
+
+router.post('/agencies/:id/logo/confirm', checkAuth, requireActivePackage, (req, res, next) => {
+	const parsedParams = agencyIdParamsSchema.safeParse(req.params);
+	const parsedBody = agencyLogoConfirmBodySchema.safeParse(req.body);
+	if (!parsedParams.success || !parsedBody.success) return res.status(400).json({ success: false, error: 'Invalid logo confirmation request' });
+	req.params = parsedParams.data as unknown as typeof req.params;
+	req.body = parsedBody.data;
+	return confirmAgencyLogoUpload(req, res, next);
+});
 
 router.post('/agencies/:id/documents', checkAuth, requireActivePackage, (req, res, next) => {
 	const parsedParams = agencyIdParamsSchema.safeParse(req.params);

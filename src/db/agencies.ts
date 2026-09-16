@@ -216,6 +216,14 @@ const agenciesDb = {
     return agency ? toRecord(agency) : null;
   },
 
+  updateAgencyLogo: async function(agencyId: number, logoKey: string): Promise<Record<string, unknown> | null> {
+    const agency = await prisma.agency.update({
+      where: { id: agencyId },
+      data: { logo_url: logoKey, updated_at: new Date() }
+    });
+    return toRecord(agency);
+  },
+
   upsertAgencyDocument: async function(payload: AgencyDocumentPayload): Promise<Record<string, unknown>> {
     const document = await prisma.agencyDocument.upsert({
       where: {
@@ -437,14 +445,14 @@ const agenciesDb = {
       if (listings.length !== listingIds.length) throw new Error('One or more listings cannot be transferred');
 
       if (!target.is_primary && target.listing_limit !== null) {
-        const currentCount = await tx.listing.count({ where: { agency_id: agencyId, user_id: targetUserId, deleted_at: null } });
+        const currentCount = await tx.listing.count({ where: { agency_id: agencyId, assigned_agent_id: targetUserId, deleted_at: null } });
         const incomingCount = listings.filter((listing) => listing.id !== undefined).length;
         if (currentCount + incomingCount > target.listing_limit) throw new Error('Target agent listing limit would be exceeded');
       }
 
       const result = await tx.listing.updateMany({
         where: { id: { in: listingIds }, agency_id: agencyId, deleted_at: null },
-        data: { user_id: targetUserId, listing_owner_type: 'AGENT', updated_at: new Date() }
+        data: { assigned_agent_id: targetUserId, listing_owner_type: 'AGENT', updated_at: new Date() }
       });
       return result.count;
     });
@@ -458,8 +466,8 @@ const agenciesDb = {
       if (!membership) return null;
 
       const reassigned = await tx.listing.updateMany({
-        where: { agency_id: agencyId, user_id: agentUserId, deleted_at: null },
-        data: { user_id: ownerUserId, listing_owner_type: 'AGENT', updated_at: new Date() }
+        where: { agency_id: agencyId, assigned_agent_id: agentUserId, deleted_at: null },
+        data: { assigned_agent_id: null, listing_owner_type: 'AGENT', updated_at: new Date() }
       });
       await tx.agencyAgent.delete({ where: { user_id: agentUserId } });
       await tx.agencyInvitation.updateMany({ where: { agency_id: agencyId, invited_user_id: agentUserId, status: 'PENDING' }, data: { status: 'REVOKED', updated_at: new Date() } });
