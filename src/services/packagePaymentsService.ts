@@ -42,8 +42,8 @@ function expiryDate(durationDays: number | null, startsAt: Date): Date | null {
 
 export async function createPackageCheckout(userId: string, packageId: number, method: PackagePaymentMethod, requestId?: string) {
   const [userRows, packageRows] = await Promise.all([
-    prisma.$queryRaw<Array<{ email: string; username: string; phone: string | null }>>`
-      SELECT email, username, phone FROM users WHERE id = ${userId} LIMIT 1
+    prisma.$queryRaw<Array<{ email: string; username: string; phone: string | null; role: string }>>`
+      SELECT email, username, phone, role FROM users WHERE id = ${userId} LIMIT 1
     `,
     prisma.$queryRaw<PackageRecord[]>`
       SELECT id, name, customer_type, price::text, currency, duration_days
@@ -54,6 +54,7 @@ export async function createPackageCheckout(userId: string, packageId: number, m
   const user = userRows[0];
   const packageRecord = packageRows[0];
   if (!user) throw new PackagePaymentError('USER_NOT_FOUND', 'User not found', 404);
+  if (user.role === 'AGENT') throw new PackagePaymentError('AGENCY_MANAGED_ACCOUNT', 'Your package is managed by your agency.', 403);
   if (!packageRecord) throw new PackagePaymentError('PACKAGE_NOT_FOUND', 'Package is not available', 404);
 
   const reference = `montoit-${Date.now().toString(36)}-${crypto.randomBytes(6).toString('hex')}`;

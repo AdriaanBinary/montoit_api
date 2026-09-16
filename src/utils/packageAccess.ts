@@ -38,6 +38,19 @@ type ActivePackage = {
   features: PackageFeatures;
 };
 
+type PackageSummary = {
+  account_type: AccountType;
+  package_name: string | null;
+  subscription_status: 'ACTIVE' | 'EXPIRED' | 'INACTIVE';
+  subscription_expiry: Date | null;
+  published_listings: number;
+  max_published_listings: number;
+  remaining_published_listings: number;
+  managed_by_agency: boolean;
+  agency_name?: string;
+  features: PackageFeatures;
+};
+
 export function getAccountType(role: unknown): AccountType {
   return String(role).toUpperCase() === 'PRIVATE' ? 'PRIVATE' : 'AGENCY';
 }
@@ -94,13 +107,40 @@ export async function getActivePackageFeatures(userId: string): Promise<ActivePa
   };
 }
 
-export async function getPackageSummary(userId: string) {
+export async function getPackageSummary(userId: string): Promise<PackageSummary | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { role: true, subscription: true, subscription_expiry: true }
   });
 
   if (!user) return null;
+
+  const agencyMembership = String(user.role).toUpperCase() === 'AGENT'
+    ? await prisma.agencyAgent.findUnique({
+        where: { user_id: userId },
+        select: { listing_limit: true, agency: { select: { id: true, name: true, created_by_user_id: true, status: true } } }
+      })
+    : null;
+
+  if (agencyMembership?.agency.status === 'ACTIVE') {
+    const ownerSummary = await getPackageSummary(agencyMembership.agency.created_by_user_id);
+    const assignedListings = await prisma.listing.count({
+      where: { assigned_agent_id: userId, agency_id: agencyMembership.agency.id, deleted_at: null, is_published: true }
+    });
+    const agentLimit = agencyMembership.listing_limit ?? ownerSummary?.max_published_listings ?? 0;
+    return {
+      account_type: 'AGENCY' as const,
+      package_name: ownerSummary?.package_name ?? null,
+      subscription_status: ownerSummary?.subscription_status ?? 'INACTIVE',
+      subscription_expiry: ownerSummary?.subscription_expiry ?? null,
+      published_listings: assignedListings,
+      max_published_listings: agentLimit,
+      remaining_published_listings: Math.max(0, agentLimit - assignedListings),
+      managed_by_agency: true,
+      agency_name: agencyMembership.agency.name,
+      features: ownerSummary?.features ?? EMPTY_FEATURES
+    } as const;
+  }
 
   const accountType = getAccountType(user.role);
   let normalizedPackage: ActivePackage | null = null;
@@ -110,8 +150,13 @@ export async function getPackageSummary(userId: string) {
     console.warn('Normalized package lookup failed; using legacy subscription fields:', error);
   }
 
+  const ownedAgency = String(user.role).toUpperCase() === 'AGENCY_OWNER'
+    ? await prisma.agency.findFirst({ where: { created_by_user_id: userId, status: 'ACTIVE' }, select: { id: true } })
+    : null;
   const publishedListings = await prisma.listing.count({
-    where: { user_id: userId, is_published: true, deleted_at: null }
+    where: ownedAgency
+      ? { agency_id: ownedAgency.id, is_published: true, deleted_at: null }
+      : { user_id: userId, is_published: true, deleted_at: null }
   });
   const active = normalizedPackage !== null || hasActiveLegacyPackage(user.subscription, user.subscription_expiry);
   const features = normalizedPackage?.features ?? {
@@ -128,6 +173,7 @@ export async function getPackageSummary(userId: string) {
     published_listings: publishedListings,
     max_published_listings: maxPublishedListings,
     remaining_published_listings: Math.max(0, maxPublishedListings - publishedListings),
+    managed_by_agency: false,
     features
   } as const;
 }

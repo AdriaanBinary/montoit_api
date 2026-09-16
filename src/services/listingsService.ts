@@ -283,14 +283,24 @@ export function isAgentRole(role: unknown): boolean {
 
 async function getManagedAgencyId(userId: string): Promise<number | undefined> {
   const agency = await agenciesDb.getOwnedAgency(userId);
-  return agency?.status === 'ACTIVE' && typeof agency.id === 'number' ? agency.id : undefined;
+  if (agency?.status === 'ACTIVE' && typeof agency.id === 'number') return agency.id;
+
+  const membership = await agenciesDb.getAgencyMembership(userId);
+  const membershipAgency = membership?.agency as Record<string, unknown> | undefined;
+  return membershipAgency?.status === 'ACTIVE' && typeof membership?.agency_id === 'number'
+    ? membership.agency_id
+    : undefined;
 }
 
 async function getListingManagementContext(listing: Record<string, unknown>, userId: string): Promise<number | null | undefined> {
   if (String(listing.user_id) === userId) return undefined;
 
   const agencyId = await getManagedAgencyId(userId);
-  if (agencyId !== undefined && Number(listing.agency_id) === agencyId) return agencyId;
+  if (agencyId !== undefined && Number(listing.agency_id) === agencyId) {
+    const membership = await agenciesDb.getAgencyMembership(userId);
+    const isAgencyOwner = Boolean(membership?.is_primary);
+    if (isAgencyOwner || String(listing.assigned_agent_id) === userId) return agencyId;
+  }
 
   return null;
 }
