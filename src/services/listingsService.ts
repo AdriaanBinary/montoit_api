@@ -554,8 +554,6 @@ export const uploadListingImages: RequestHandler = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Listing not found' });
     }
 
-    await listingsDb.ensureListingImagesTable();
-
     const images = Array.isArray(body.images) ? body.images : [];
     const packageAccess = await getActivePackageFeatures(userId);
     const photoLimit = packageAccess?.features.photos_per_listing;

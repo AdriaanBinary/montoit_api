@@ -14,6 +14,8 @@ import packagesRoutes from './routes/packages.js';
 import paymentsRoutes from './routes/payments.js';
 import prisma from './db/prisma.js';
 import { ensureCameroonLocationDataInitialized } from './db/locations.js';
+import listingsDb from './db/listings.js';
+import usersDb from './db/users.js';
 import { registerApiRoute } from './docs/swagger.js';
 import { errorFields, logger, requestIdMiddleware } from './utils/logger.js';
 
@@ -161,10 +163,14 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 app.listen(PORT, async () => {
   try {
-    await ensureCameroonLocationDataInitialized();
-    console.log('📍 Cameroon location data initialized');
+    await Promise.all([
+      ensureCameroonLocationDataInitialized(),
+      listingsDb.ensureListingImagesTable(),
+      usersDb.ensureUserFavoritesTable()
+    ]);
+    console.log('Database compatibility tables initialized');
   } catch (error) {
-    console.error('Failed to initialize Cameroon location data:', error);
+    console.error('Failed to initialize database compatibility tables:', error);
   }
 
   console.log(`🚀 Montoit API running on http://localhost:${PORT}`);

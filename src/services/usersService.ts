@@ -115,7 +115,6 @@ export const addFavoriteListing: RequestHandler = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Listing not found' });
     }
 
-    await usersDb.ensureUserFavoritesTable();
     await usersDb.upsertFavoriteListing(userId, body.listing_id as number);
 
     return res.status(201).json({ success: true, listing });
@@ -142,7 +141,6 @@ export const removeFavoriteListing: RequestHandler = async (req, res) => {
   }
 
   try {
-    await usersDb.ensureUserFavoritesTable();
     await usersDb.removeFavoriteListing(userId, listingId);
 
     return res.json({ success: true, message: 'Favorite removed' });
@@ -168,8 +166,6 @@ export const getFavoriteListings: RequestHandler = async (req, res) => {
   const itemsPerPage = Math.min(toPositiveInt(typedReq.query.limit, 20), 100);
 
   try {
-    await usersDb.ensureUserFavoritesTable();
-
     const totalItems = await usersDb.countFavoriteListings(userId);
     const pages = totalItems === 0 ? 1 : Math.ceil(totalItems / itemsPerPage);
     const safePage = Math.min(currentPage, pages);
