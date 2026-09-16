@@ -222,6 +222,20 @@ export const getMyAgency: RequestHandler = async (req, res) => {
   return res.json({ success: true, agency: { ...agency, logo_url } });
 };
 
+export const updateAgencyBranding: RequestHandler = async (req, res) => {
+  const userId = (req as AuthenticatedRequest).user?.user_id;
+  const agencyId = Number(req.params.id);
+  const body = (req.body ?? {}) as { banner_background_color?: string | null; banner_text_color?: string | null };
+  if (!userId || !Number.isInteger(agencyId)) return res.status(400).json({ success: false, error: 'Invalid agency branding request' });
+  const agency = await agenciesDb.getOwnedAgencyById(agencyId, userId);
+  if (!agency) return res.status(404).json({ success: false, error: 'Agency application not found' });
+  const updatedAgency = await agenciesDb.updateAgencyBranding(agencyId, {
+    banner_background_color: body.banner_background_color ?? null,
+    banner_text_color: body.banner_text_color ?? null
+  });
+  return res.json({ success: true, agency: updatedAgency });
+};
+
 export const createAgencyLogoUpload: RequestHandler = async (req, res) => {
   const userId = (req as AuthenticatedRequest).user?.user_id;
   const agencyId = Number(req.params.id);

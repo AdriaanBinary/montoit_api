@@ -231,6 +231,8 @@ model Agency {
   phone              String?      @db.VarChar(50)
   website            String?      @db.Text
   logo_url           String?      @db.Text
+  banner_background_color String?  @db.VarChar(7)
+  banner_text_color       String?  @db.VarChar(7)
   address_line1      String?      @db.Text
   address_line2      String?      @db.Text
   region_id          Int?

@@ -5,6 +5,7 @@ import {
 	confirmAgencyDocumentUpload,
 	confirmAgencyLogoUpload,
 	createAgencyLogoUpload,
+	updateAgencyBranding,
 	createAgency,
 	getMyAgency,
 	getAgencyAgents,
@@ -54,6 +55,10 @@ const agencyLogoUploadBodySchema = z.object({
 	content_type: z.string().regex(/^image\//)
 });
 const agencyLogoConfirmBodySchema = z.object({ object_key: z.string().min(1) });
+const agencyBrandingBodySchema = z.object({
+	banner_background_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable(),
+	banner_text_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable()
+});
 const agencyReviewBodySchema = z.object({
 	decision: z.enum(['ACTIVE', 'REJECTED']),
 	review_note: z.string().max(4000).optional()
@@ -220,6 +225,15 @@ router.post('/agencies', checkAuth, requireActivePackage, (req, res, next) => {
 });
 
 router.get('/agencies/me', checkAuth, getMyAgency);
+
+router.patch('/agencies/:id/branding', checkAuth, (req, res, next) => {
+	const parsedParams = agencyIdParamsSchema.safeParse(req.params);
+	const parsedBody = agencyBrandingBodySchema.safeParse(req.body);
+	if (!parsedParams.success || !parsedBody.success) return res.status(400).json({ success: false, error: 'Invalid agency branding colors' });
+	req.params = parsedParams.data as unknown as typeof req.params;
+	req.body = parsedBody.data;
+	return updateAgencyBranding(req, res, next);
+});
 
 router.post('/agencies/:id/logo', checkAuth, requireActivePackage, (req, res, next) => {
 	const parsedParams = agencyIdParamsSchema.safeParse(req.params);

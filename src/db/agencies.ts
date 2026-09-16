@@ -224,6 +224,17 @@ const agenciesDb = {
     return toRecord(agency);
   },
 
+  updateAgencyBranding: async function(
+    agencyId: number,
+    branding: { banner_background_color: string | null; banner_text_color: string | null }
+  ): Promise<Record<string, unknown> | null> {
+    const agency = await prisma.agency.update({
+      where: { id: agencyId },
+      data: { ...branding, updated_at: new Date() }
+    });
+    return toRecord(agency);
+  },
+
   upsertAgencyDocument: async function(payload: AgencyDocumentPayload): Promise<Record<string, unknown>> {
     const document = await prisma.agencyDocument.upsert({
       where: {

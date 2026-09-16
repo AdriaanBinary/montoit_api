@@ -101,7 +101,9 @@ const listingCreatorInclude = {
     select: {
       id: true,
       name: true,
-      logo_url: true
+      logo_url: true,
+      banner_background_color: true,
+      banner_text_color: true
     }
   },
   assignedAgent: {
