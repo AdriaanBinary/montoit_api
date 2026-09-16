@@ -101,7 +101,11 @@ export async function attachPublicIdentityUrls(listings: ListingRecord[]): Promi
     return {
       ...listing,
       agency: agency ? { ...agency, logo_url: agencyLogoUrl } : agency,
-      assignedAgent: assignedAgent ? { ...assignedAgent, avatar_url: agentAvatarUrl } : assignedAgent
+      assignedAgent: assignedAgent ? { ...assignedAgent, avatar_url: agentAvatarUrl } : assignedAgent,
+      agent_name: typeof assignedAgent?.username === 'string' ? assignedAgent.username : null,
+      agent_avatar: agentAvatarUrl,
+      agent_email: typeof assignedAgent?.email === 'string' ? assignedAgent.email : null,
+      agent_phone: typeof assignedAgent?.phone === 'string' ? assignedAgent.phone : null
     };
   }));
 }
