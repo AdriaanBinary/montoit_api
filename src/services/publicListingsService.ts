@@ -84,7 +84,7 @@ function asListingImages(value: unknown): ListingImageRecord[] {
     : [];
 }
 
-async function attachPublicIdentityUrls(listings: ListingRecord[]): Promise<ListingRecord[]> {
+export async function attachPublicIdentityUrls(listings: ListingRecord[]): Promise<ListingRecord[]> {
   const bucketName = process.env.AWS_S3_BUCKET ?? 'property-images';
   return Promise.all(listings.map(async (listing) => {
     const agency = listing.agency as ListingRecord | null | undefined;

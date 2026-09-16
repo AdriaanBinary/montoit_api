@@ -22,6 +22,7 @@ import {
 import { LocationValidationError, validateListingLocationIds } from '../db/locations.js';
 import usersDb from '../db/users.js';
 import agenciesDb from '../db/agencies.js';
+import { attachPublicIdentityUrls } from './publicListingsService.js';
 import { AuthenticatedRequest } from '../utils/authMiddleware.js';
 import { getActivePackageFeatures } from '../utils/packageAccess.js';
 import { attachPublicImageUrls } from './publicListingsService.js';
@@ -1131,7 +1132,7 @@ export const getPrivateListings: RequestHandler = async (req, res) => {
     const listingsWithDetails = await Promise.all(
       privateListings.map(async (listing) => addListingGeneralFees(await addListingOptions(listing)))
     );
-    const listings = await attachPublicImageUrls(listingsWithDetails);
+    const listings = await attachPublicImageUrls(await attachPublicIdentityUrls(listingsWithDetails));
 
     return res.json({
       success: true,
