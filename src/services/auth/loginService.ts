@@ -24,6 +24,10 @@ export const login: RequestHandler = async (req, res) => {
     }
 
     if (user) {
+      if (!user.email_verified) {
+        return res.status(403).json({ error: 'Please verify your email before logging in' });
+      }
+
       const tokenPayload = { user_id: user.id, email: user.email };
       const token = jwt.sign(tokenPayload, secret, { expiresIn: '7d' });
 

@@ -1,6 +1,8 @@
 import { Request, RequestHandler } from 'express';
-import jwt from 'jsonwebtoken';
 import addData from '../../db/add.js';
+import prisma from '../../db/prisma.js';
+import { createOtp, hashEmailToken, OTP_EXPIRY_MS } from './emailTokens.js';
+import { sendVerificationEmail } from '../email/emailService.js';
 
 interface RegisterRequestBody {
   username?: string;
@@ -19,18 +21,20 @@ export const register: RequestHandler = async (req, res) => {
 
   try {
     const user = await addData.addUser(username, email, password, phone);
-    const secret = process.env.JWT_KEY;
-
-    if (!secret) {
-      throw new Error('JWT_KEY is not defined');
-    }
-
-    const tokenPayload = { user_id: user.id, email: user.email };
-    const token = jwt.sign(tokenPayload, secret, { expiresIn: '1d' });
+    const otp = createOtp();
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        verification_token: hashEmailToken(otp),
+        verification_expires_at: new Date(Date.now() + OTP_EXPIRY_MS),
+        verification_sent_at: new Date()
+      }
+    });
+    await sendVerificationEmail(user.email, otp);
 
     return res.status(200).json({
-      message: 'Sign-up successful',
-      token,
+      message: 'Sign-up successful. Check your email for the verification code.',
+      email_pending_verification: true,
       user: {
         user_id: user.id,
         username: user.username,

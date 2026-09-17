@@ -22,7 +22,8 @@ const registerUserSchema = z.object({
 
 const registerSuccessResponseSchema = z.object({
 	message: z.string(),
-	token: z.string(),
+	token: z.string().optional(),
+	email_pending_verification: z.boolean().optional(),
 	user: registerUserSchema
 });
 

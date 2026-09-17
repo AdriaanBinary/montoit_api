@@ -6,6 +6,8 @@ import autocompleteRoutes from './routes/autocomplete.js';
 import locationsRoutes from './routes/locations.js';
 import registerRoutes from './routes/auth/register.js';
 import loginRoutes from './routes/auth/login.js';
+import verificationRoutes from './routes/auth/verification.js';
+import passwordResetRoutes from './routes/auth/passwordReset.js';
 import listingsRoutes from './routes/listings.js';
 import agenciesRoutes from './routes/agencies.js';
 import usersRoutes from './routes/users.js';
@@ -106,6 +108,8 @@ app.get('/health', (_req: Request, res: Response) => {
 //auth
 app.use('/api/auth/', registerRoutes);
 app.use('/api/auth/', loginRoutes);
+app.use('/api/auth/', verificationRoutes);
+app.use('/api/auth/', passwordResetRoutes);
 
 // Routes
 app.use('/api', autocompleteRoutes);

@@ -50,7 +50,8 @@ const addData = {
         username,
         email,
         phone: typeof phone === 'string' && phone.trim().length > 0 ? phone.trim() : null,
-        password: hashedPassword
+        password: hashedPassword,
+        email_verified: false
       },
       select: {
         id: true,

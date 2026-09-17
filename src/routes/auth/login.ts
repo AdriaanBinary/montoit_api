@@ -41,6 +41,7 @@ registerApiRoute({
 		200: { description: 'Login successful', schema: loginSuccessResponseSchema },
 		400: { description: 'Bad request', schema: authErrorResponseSchema },
 		401: { description: 'Unauthorized', schema: authErrorResponseSchema },
+		403: { description: 'Email verification required', schema: authErrorResponseSchema },
 		500: { description: 'Internal server error', schema: authErrorResponseSchema }
 	}
 });

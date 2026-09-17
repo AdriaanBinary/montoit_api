@@ -9,6 +9,7 @@ export interface UserRecord {
   phone: string | null;
   role: 'PRIVATE' | 'AGENT' | 'AGENCY_OWNER' | 'ADMIN';
   password: string;
+  email_verified: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -53,6 +54,7 @@ const getData = {
           phone: true,
           role: true,
           password: true,
+          email_verified: true,
           created_at: true,
           updated_at: true
         }
@@ -75,6 +77,7 @@ const getData = {
         phone: user.phone,
         role: user.role,
         password: storedPassword,
+        email_verified: user.email_verified,
         created_at: user.created_at.toISOString(),
         updated_at: user.updated_at.toISOString()
       };
