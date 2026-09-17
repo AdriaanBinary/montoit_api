@@ -19,8 +19,11 @@ export const register: RequestHandler = async (req, res) => {
     return res.status(400).json({ error: 'username, email, and password are required' });
   }
 
+  let createdUserId: string | null = null;
+
   try {
     const user = await addData.addUser(username, email, password, phone);
+    createdUserId = user.id;
     const otp = createOtp();
     await prisma.user.update({
       where: { id: user.id },
@@ -30,7 +33,19 @@ export const register: RequestHandler = async (req, res) => {
         verification_sent_at: new Date()
       }
     });
-    await sendVerificationEmail(user.email, otp);
+    try {
+      await sendVerificationEmail(user.email, otp);
+    } catch (emailError: unknown) {
+      await prisma.user.delete({ where: { id: user.id } }).catch((cleanupError: unknown) => {
+        console.error('Failed to roll back registration after email delivery failure:', cleanupError);
+      });
+      createdUserId = null;
+      console.error('Verification email delivery failed:', emailError);
+      return res.status(503).json({
+        error: 'Email service unavailable',
+        message: 'Could not send the verification email. Please try again.'
+      });
+    }
 
     return res.status(200).json({
       message: 'Sign-up successful. Check your email for the verification code.',
@@ -44,7 +59,18 @@ export const register: RequestHandler = async (req, res) => {
       }
     });
   } catch (error: unknown) {
+    if (createdUserId) {
+      await prisma.user.delete({ where: { id: createdUserId } }).catch((cleanupError: unknown) => {
+        console.error('Failed to roll back registration:', cleanupError);
+      });
+    }
+
     console.error('Register error:', error);
+
+    if (error instanceof Error && error.message.includes('already exists')) {
+      return res.status(409).json({ error: error.message });
+    }
+
     return res.status(500).json({
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error'
