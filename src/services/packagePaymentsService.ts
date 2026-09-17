@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import prisma from '../db/prisma.js';
+import { sendPackageActivationEmail } from './email/emailService.js';
 import { flutterwaveProvider, FlutterwaveProviderError } from './payments/flutterwaveProvider.js';
 import { errorFields, logger, maskIdentifier } from '../utils/logger.js';
 
@@ -170,6 +171,11 @@ export async function completePackagePayment(paymentId: string, transactionId: s
   });
 
   logger.info('payment.entitlement.activated', { request_id: requestId, payment_id: payment.id, user_id: payment.user_id, package_id: payment.package_id, status: 'SUCCESS' });
+
+  const user = await prisma.user.findUnique({ where: { id: payment.user_id }, select: { username: true, email: true } });
+  if (expiresAt) {
+    await sendPackageActivationEmail(user?.email ?? '', user?.username ?? 'there', payment.package_name, expiresAt);
+  }
 
   return { payment_id: payment.id, package_name: payment.package_name, subscription_expiry: expiresAt };
 }

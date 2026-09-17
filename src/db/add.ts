@@ -1,5 +1,6 @@
 import prisma from './prisma.js';
 import { hashPassword } from '../utils/passwordUtils.js';
+import { normalizeEmail } from '../utils/emailUtils.js';
 import getData from './get.js';
 
 export interface CreatedUser {
@@ -31,12 +32,13 @@ async function generateUniqueUserId(): Promise<string> {
 
 const addData = {
   addUser: async function(username: string, email: string, password: string, phone?: string): Promise<CreatedUser> {
+    const normalizedEmail = normalizeEmail(email);
     const usernameExists = await getData.checkUsername(username);
     if (usernameExists) {
       throw new Error('Username already exists');
     }
 
-    const emailExists = await getData.checkEmail(email);
+    const emailExists = await getData.checkEmail(normalizedEmail);
     if (emailExists) {
       throw new Error('Email already exists');
     }
@@ -48,7 +50,7 @@ const addData = {
       data: {
         id: userId,
         username,
-        email,
+        email: normalizedEmail,
         phone: typeof phone === 'string' && phone.trim().length > 0 ? phone.trim() : null,
         password: hashedPassword,
         email_verified: false

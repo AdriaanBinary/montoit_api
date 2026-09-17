@@ -3,6 +3,8 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Request, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import listingsDb from '../db/listings.js';
+import prisma from '../db/prisma.js';
+import { sendListingEnquiryEmail } from './email/emailService.js';
 import {
   addListingGeneralFees,
   getListingGeneralFees,
@@ -899,6 +901,25 @@ export const createListingEnquiry: RequestHandler = async (req, res) => {
       phone: body.phone?.trim() || null,
       message: body.message.trim()
     });
+
+    const listingNotificationDetails = await prisma.listing.findUnique({
+      where: { id: listingId },
+      select: {
+        title: true,
+        creator: { select: { username: true, email: true } }
+      }
+    });
+    await sendListingEnquiryEmail(
+      listingNotificationDetails?.creator.email ?? '',
+      listingNotificationDetails?.creator.username ?? 'there',
+      listingNotificationDetails?.title || `Listing #${listingId}`,
+      {
+        name: body.name.trim(),
+        email: body.email.trim(),
+        phone: body.phone?.trim() || null,
+        message: body.message.trim()
+      }
+    );
 
     return res.status(201).json({ success: true, enquiry });
   } catch (error: unknown) {

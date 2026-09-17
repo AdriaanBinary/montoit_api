@@ -5,6 +5,13 @@ import agenciesDb from '../db/agencies.js';
 import usersDb from '../db/users.js';
 import { AuthenticatedRequest } from '../utils/authMiddleware.js';
 import { getActivePackageFeatures } from '../utils/packageAccess.js';
+import prisma from '../db/prisma.js';
+import {
+  sendAgencyApprovedEmail,
+  sendAgencyCreatedEmail,
+  sendAgencyInvitationEmail,
+  sendAgencyInvitationResponseEmail
+} from './email/emailService.js';
 
 interface CreateAgencyRequestBody {
   name?: string;
@@ -190,6 +197,9 @@ export const createAgency: RequestHandler = async (req, res) => {
     const typedReq = req as Request<{}, {}, CreateAgencyRequestBody>;
     const payload = normalizeCreateAgencyInput(typedReq.body, creatorUserId);
     const agency = await agenciesDb.createAgency(payload);
+
+    const creator = await prisma.user.findUnique({ where: { id: creatorUserId }, select: { username: true, email: true } });
+    await sendAgencyCreatedEmail(creator?.email ?? '', creator?.username ?? 'there', payload.name);
 
     return res.status(201).json({ success: true, agency });
   } catch (error: unknown) {
@@ -392,6 +402,13 @@ export const reviewAgencyApplication: RequestHandler = async (req, res) => {
 
   const agency = await agenciesDb.reviewAgencyApplication(agencyId, userId, body.decision, body.review_note?.trim() || null);
   if (!agency) return res.status(409).json({ success: false, error: 'Only under-review applications can be reviewed' });
+  if (body.decision === 'ACTIVE') {
+    const creator = await prisma.user.findUnique({
+      where: { id: String(agency.created_by_user_id) },
+      select: { username: true, email: true }
+    });
+    await sendAgencyApprovedEmail(creator?.email ?? '', creator?.username ?? 'there', String(agency.name));
+  }
   return res.json({ success: true, agency });
 };
 
@@ -430,6 +447,19 @@ export const inviteAgencyAgent: RequestHandler = async (req, res) => {
   }
 
   const invitation = await agenciesDb.createAgencyInvitation(agencyId, String(invitedUser.id), ownerUserId);
+  const invitationDetails = await prisma.agency.findUnique({
+    where: { id: agencyId },
+    select: {
+      name: true,
+      creator: { select: { username: true } }
+    }
+  });
+  await sendAgencyInvitationEmail(
+    String(invitedUser.email),
+    String(invitedUser.username),
+    invitationDetails?.name ?? 'an agency',
+    invitationDetails?.creator.username ?? 'An agency owner'
+  );
   return res.status(201).json({ success: true, invitation });
 };
 
@@ -447,6 +477,21 @@ export const respondToAgencyInvitation = (accept: boolean): RequestHandler => as
   try {
     const invitation = await agenciesDb.respondToInvitation(invitationId, userId, accept);
     if (!invitation) return res.status(404).json({ success: false, error: 'Pending invitation not found' });
+    const invitationDetails = await prisma.agencyInvitation.findUnique({
+      where: { id: invitationId },
+      select: {
+        agency: { select: { name: true } },
+        invitedUser: { select: { username: true } },
+        invitedByUser: { select: { username: true, email: true } }
+      }
+    });
+    await sendAgencyInvitationResponseEmail(
+      invitationDetails?.invitedByUser.email ?? '',
+      invitationDetails?.invitedByUser.username ?? 'there',
+      invitationDetails?.invitedUser.username ?? 'The invited agent',
+      invitationDetails?.agency.name ?? 'your agency',
+      accept
+    );
     return res.json({ success: true, invitation });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';

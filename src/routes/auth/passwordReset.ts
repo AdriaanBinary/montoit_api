@@ -4,6 +4,7 @@ import prisma from '../../db/prisma.js';
 import { hashPassword } from '../../utils/passwordUtils.js';
 import { createResetToken, hasExpired, hashEmailToken, PASSWORD_RESET_EXPIRY_MS } from '../../services/auth/emailTokens.js';
 import { sendPasswordResetEmail } from '../../services/email/emailService.js';
+import { normalizeEmail } from '../../utils/emailUtils.js';
 
 const router = express.Router();
 const genericResponse = { message: 'If an account exists for that email, a password reset link has been sent.' };
@@ -21,7 +22,7 @@ router.post('/forgot-password', async (req, res) => {
   }
 
   try {
-    const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+    const user = await prisma.user.findUnique({ where: { email: normalizeEmail(parsed.data.email) } });
     if (!user) {
       return res.status(200).json(genericResponse);
     }

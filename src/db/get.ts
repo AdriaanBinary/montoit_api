@@ -1,5 +1,6 @@
 import prisma from './prisma.js';
 import { checkPassword } from '../utils/passwordUtils.js';
+import { normalizeEmail } from '../utils/emailUtils.js';
 
 export interface UserRecord {
   id: string;
@@ -32,7 +33,7 @@ const getData = {
   checkEmail: async function(email: string): Promise<boolean> {
     try {
       const user = await prisma.user.findUnique({
-        where: { email },
+        where: { email: normalizeEmail(email) },
         select: { id: true }
       });
 
@@ -46,7 +47,7 @@ const getData = {
   checkLogin: async function(email: string, password: string): Promise<UserRecord | null> {
     try {
       const user = await prisma.user.findUnique({
-        where: { email },
+        where: { email: normalizeEmail(email) },
         select: {
           id: true,
           username: true,
