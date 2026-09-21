@@ -804,9 +804,11 @@ export const getListingById: RequestHandler = async (req, res) => {
       });
     }
 
+    const listingWithIdentity = (await attachPublicIdentityUrls([listing]))[0];
+
     return res.json({
       success: true,
-      listing: { ...(await addListingGeneralFees(await addListingOptions(listing))), images }
+      listing: { ...(await addListingGeneralFees(await addListingOptions(listingWithIdentity))), images }
     });
   } catch (error: unknown) {
     console.error('Get listing error:', error);
