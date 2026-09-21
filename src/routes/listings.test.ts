@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildListingImageObjectKey, normalizeCreateListingInput } from '../services/listingsService.js';
-import { buildPublicListingsWhere } from '../services/publicListingsService.js';
+import { buildPublicListingsWhere, resolvePublicListingContact } from '../services/publicListingsService.js';
 import { listingResultSchema, publicListingsQuerySchema } from './listings.js';
 
 test('defaults new listings to draft and unpublished when not provided', () => {
@@ -40,6 +40,14 @@ test('builds a deterministic listing image object key', () => {
 
   assert.match(key, /^listings\/42\//);
   assert.match(key, /-2-Front-View\.jpg$/);
+});
+
+test('resolves the assigned agent before the private listing creator', () => {
+  const creator = { id: 'private-owner', username: 'Private seller', email: 'seller@example.com' };
+  const assignedAgent = { id: 'assigned-agent', username: 'Assigned agent', email: 'agent@example.com' };
+
+  assert.deepEqual(resolvePublicListingContact({ creator }), creator);
+  assert.deepEqual(resolvePublicListingContact({ creator, assignedAgent }), assignedAgent);
 });
 
 test('builds public listing filters with repeated location ids', () => {

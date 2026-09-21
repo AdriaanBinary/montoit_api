@@ -88,9 +88,8 @@ export async function attachPublicIdentityUrls(listings: ListingRecord[]): Promi
   const bucketName = process.env.AWS_S3_BUCKET ?? 'property-images';
   return Promise.all(listings.map(async (listing) => {
     const agency = listing.agency as ListingRecord | null | undefined;
-    const assignedRelation = listing.assignedAgent as ListingRecord | null | undefined;
-    const creator = listing.creator as ListingRecord | null | undefined;
-    const assignedAgent = assignedRelation || (creator?.role === 'AGENT' ? creator : null);
+    const assignedAgent = resolvePublicListingContact(listing);
+    const listingContactType = listing.listing_contact_type || (listing.assignedAgent ? 'AGENT' : 'PRIVATE');
     const [agencyLogoUrl, agentAvatarUrl] = await Promise.all([
       typeof agency?.logo_url === 'string' && agency.logo_url
         ? buildPresignedGetUrl(bucketName, agency.logo_url).catch(() => null)
@@ -104,12 +103,20 @@ export async function attachPublicIdentityUrls(listings: ListingRecord[]): Promi
       ...listing,
       agency: agency ? { ...agency, logo_url: agencyLogoUrl } : agency,
       assignedAgent: assignedAgent ? { ...assignedAgent, avatar_url: agentAvatarUrl } : assignedAgent,
+      listing_contact_type: listingContactType,
       agent_name: typeof assignedAgent?.username === 'string' ? assignedAgent.username : null,
       agent_avatar: agentAvatarUrl,
       agent_email: typeof assignedAgent?.email === 'string' ? assignedAgent.email : null,
       agent_phone: typeof assignedAgent?.phone === 'string' ? assignedAgent.phone : null
     };
   }));
+}
+
+export function resolvePublicListingContact(listing: ListingRecord): ListingRecord | null {
+  const assignedAgent = listing.assignedAgent as ListingRecord | null | undefined;
+  const creator = listing.creator as ListingRecord | null | undefined;
+
+  return assignedAgent || creator || null;
 }
 
 export async function attachPublicImageUrls(listings: ListingRecord[]): Promise<ListingRecord[]> {

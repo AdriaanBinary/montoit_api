@@ -24,7 +24,7 @@ import {
 import { LocationValidationError, validateListingLocationIds } from '../db/locations.js';
 import usersDb from '../db/users.js';
 import agenciesDb from '../db/agencies.js';
-import { attachPublicIdentityUrls } from './publicListingsService.js';
+import { attachPublicIdentityUrls, resolvePublicListingContact } from './publicListingsService.js';
 import { AuthenticatedRequest } from '../utils/authMiddleware.js';
 import { getActivePackageFeatures } from '../utils/packageAccess.js';
 import { attachPublicImageUrls } from './publicListingsService.js';
@@ -902,17 +902,11 @@ export const createListingEnquiry: RequestHandler = async (req, res) => {
       message: body.message.trim()
     });
 
-    const listingNotificationDetails = await prisma.listing.findUnique({
-      where: { id: listingId },
-      select: {
-        title: true,
-        creator: { select: { username: true, email: true } }
-      }
-    });
+    const listingContact = resolvePublicListingContact(listing);
     await sendListingEnquiryEmail(
-      listingNotificationDetails?.creator.email ?? '',
-      listingNotificationDetails?.creator.username ?? 'there',
-      listingNotificationDetails?.title || `Listing #${listingId}`,
+      typeof listingContact?.email === 'string' ? listingContact.email : '',
+      typeof listingContact?.username === 'string' ? listingContact.username : 'there',
+      typeof listing.title === 'string' ? listing.title : `Listing #${listingId}`,
       {
         name: body.name.trim(),
         email: body.email.trim(),
