@@ -10,6 +10,7 @@ import {
   reviewAdminAgency,
   getAdminUser,
   getAdminUsers,
+  updateAdminAgencyStatus,
   suspendAdminUser,
   unsuspendAdminUser,
   updateAdminListing,
@@ -23,7 +24,9 @@ router.use(checkAuth, requireAdmin);
 router.get('/admin/overview', getAdminOverview);
 router.get('/admin/agencies', getAdminAgencies);
 router.get('/admin/agencies/:id', getAdminAgency);
+router.patch('/admin/agencies/:id/review', express.json(), reviewAdminAgency);
 router.post('/admin/agencies/:id/review', express.json(), reviewAdminAgency);
+router.patch('/admin/agencies/:id/status', express.json(), updateAdminAgencyStatus);
 router.get('/admin/users', getAdminUsers);
 router.get('/admin/users/:id', getAdminUser);
 router.patch('/admin/users/:id/role', express.json(), updateAdminUserRole);

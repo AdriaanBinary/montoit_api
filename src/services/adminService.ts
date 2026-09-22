@@ -169,6 +169,51 @@ export const reviewAdminAgency: RequestHandler = async (req, res, next) => {
   return reviewAgencyApplication(req, res, next);
 };
 
+export const updateAdminAgencyStatus: RequestHandler = async (req, res) => {
+  const adminId = String((req as AdminRequest).user?.user_id);
+  const agencyId = Number(req.params.id);
+  const status = req.body?.status;
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : null;
+  const validStatuses = ['DRAFT', 'UNDER_REVIEW', 'ACTIVE', 'REJECTED'] as const;
+
+  if (!Number.isInteger(agencyId)) return res.status(400).json({ success: false, error: 'Invalid agency id' });
+  if (!validStatuses.includes(status)) return res.status(400).json({ success: false, error: 'Invalid agency status' });
+  if ((status === 'REJECTED' || status === 'DRAFT') && !note) {
+    return res.status(400).json({ success: false, error: 'A reason is required for this status change' });
+  }
+
+  const agency = await prisma.$transaction(async (tx) => {
+    const updated = await tx.agency.updateMany({
+      where: { id: agencyId },
+      data: {
+        status,
+        is_active: status === 'ACTIVE',
+        ...(status === 'ACTIVE' ? { reviewed_at: new Date(), reviewed_by_user_id: adminId } : {}),
+        ...(note ? { review_note: note } : {}),
+        updated_at: new Date()
+      }
+    });
+    if (updated.count === 0) return null;
+
+    const updatedAgency = await tx.agency.findUniqueOrThrow({ where: { id: agencyId } });
+    if (status === 'ACTIVE') {
+      await tx.user.update({ where: { id: updatedAgency.created_by_user_id }, data: { role: 'AGENT', updated_at: new Date() } });
+    }
+    return updatedAgency;
+  });
+
+  if (!agency) return res.status(404).json({ success: false, error: 'Agency not found' });
+  await auditLogsDb.create({
+    actor_id: adminId,
+    action: 'change_agency_status',
+    entity_type: 'agency',
+    entity_id: agencyId,
+    metadata: { status, note },
+    request_id: req.requestId ?? null
+  });
+  return res.json({ success: true, agency });
+};
+
 export const getAdminAgencies: RequestHandler = async (req, res) => {
   const { page, limit, skip } = pageValues(req as AdminRequest);
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
