@@ -28,6 +28,10 @@ export const login: RequestHandler = async (req, res) => {
         return res.status(403).json({ error: 'Please verify your email before logging in' });
       }
 
+      if (user.suspended_at) {
+        return res.status(403).json({ error: 'Account suspended', message: 'This account is currently suspended.' });
+      }
+
       const tokenPayload = { user_id: user.id, email: user.email };
       const token = jwt.sign(tokenPayload, secret, { expiresIn: '7d' });
 

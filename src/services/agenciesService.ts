@@ -12,6 +12,7 @@ import {
   sendAgencyInvitationEmail,
   sendAgencyInvitationResponseEmail
 } from './email/emailService.js';
+import auditLogsDb from '../db/auditLogs.js';
 
 interface CreateAgencyRequestBody {
   name?: string;
@@ -409,6 +410,14 @@ export const reviewAgencyApplication: RequestHandler = async (req, res) => {
     });
     await sendAgencyApprovedEmail(creator?.email ?? '', creator?.username ?? 'there', String(agency.name));
   }
+  await auditLogsDb.create({
+    actor_id: userId,
+    action: body.decision === 'ACTIVE' ? 'approve_agency' : 'reject_agency',
+    entity_type: 'agency',
+    entity_id: agencyId,
+    metadata: { decision: body.decision, review_note: body.review_note?.trim() || null },
+    request_id: req.requestId ?? null
+  });
   return res.json({ success: true, agency });
 };
 

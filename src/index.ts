@@ -14,6 +14,7 @@ import usersRoutes from './routes/users.js';
 import docsRoutes from './routes/docs.js';
 import packagesRoutes from './routes/packages.js';
 import paymentsRoutes from './routes/payments.js';
+import adminRoutes from './routes/admin.js';
 import prisma from './db/prisma.js';
 import { ensureCameroonLocationDataInitialized } from './db/locations.js';
 import listingsDb from './db/listings.js';
@@ -120,6 +121,7 @@ app.use('/api', usersRoutes);
 app.use('/api', agenciesRoutes);
 app.use('/api', packagesRoutes);
 app.use('/api', paymentsRoutes);
+app.use('/api', adminRoutes);
 app.use('/', docsRoutes);
 
 app.get('/api/db-test', async (_req: Request, res: Response) => {

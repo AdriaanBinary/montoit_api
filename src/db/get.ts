@@ -11,6 +11,7 @@ export interface UserRecord {
   role: 'PRIVATE' | 'AGENT' | 'AGENCY_OWNER' | 'ADMIN';
   password: string;
   email_verified: boolean;
+  suspended_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -56,6 +57,7 @@ const getData = {
           role: true,
           password: true,
           email_verified: true,
+          suspended_at: true,
           created_at: true,
           updated_at: true
         }
@@ -79,6 +81,7 @@ const getData = {
         role: user.role,
         password: storedPassword,
         email_verified: user.email_verified,
+        suspended_at: user.suspended_at?.toISOString() ?? null,
         created_at: user.created_at.toISOString(),
         updated_at: user.updated_at.toISOString()
       };

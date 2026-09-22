@@ -28,6 +28,8 @@ model User {
   verification_sent_at DateTime? @db.Timestamptz(6)
   password_reset_token String?  @db.VarChar(128)
   password_reset_expires_at DateTime? @db.Timestamptz(6)
+  suspended_at        DateTime? @db.Timestamptz(6)
+  suspension_reason   String?   @db.Text
   created_at          DateTime  @default(now()) @db.Timestamptz(6)
   updated_at          DateTime  @default(now()) @db.Timestamptz(6)
 
@@ -41,8 +43,28 @@ model User {
   assignedListings            Listing[]         @relation("ListingAssignedAgent")
   receivedAgencyInvitations  AgencyInvitation[] @relation("AgencyInvitationRecipient")
   sentAgencyInvitations      AgencyInvitation[] @relation("AgencyInvitationSender")
+  auditLogs                  AuditLog[]         @relation("AuditLogActor")
 
   @@map("users")
+  @@index([role, suspended_at, created_at])
+}
+
+model AuditLog {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actor_id    String   @db.VarChar(16)
+  action      String   @db.VarChar(100)
+  entity_type String   @db.VarChar(50)
+  entity_id   String   @db.VarChar(100)
+  metadata    Json?
+  request_id  String?  @db.VarChar(100)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  actor User @relation("AuditLogActor", fields: [actor_id], references: [id], onDelete: Restrict)
+
+  @@index([entity_type, entity_id, created_at])
+  @@index([actor_id, created_at])
+  @@index([created_at])
+  @@map("audit_logs")
 }
 
 enum UserRole {
