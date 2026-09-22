@@ -188,7 +188,59 @@ export const getAdminAgencies: RequestHandler = async (req, res) => {
 };
 
 export const getAdminAgency: RequestHandler = async (req, res) => {
-  const agency = await prisma.agency.findUnique({ where: { id: Number(req.params.id) }, include: { creator: { select: { id: true, username: true, email: true, phone: true } }, reviewer: { select: { id: true, username: true } }, documents: true, agents: { include: { user: { select: { id: true, username: true, email: true, phone: true, role: true } } } }, _count: { select: { listings: true } } } });
+  const agency = await prisma.agency.findUnique({
+    where: { id: Number(req.params.id) },
+    include: {
+      creator: { select: { id: true, username: true, email: true, phone: true, role: true } },
+      reviewer: { select: { id: true, username: true } },
+      documents: {
+        select: { id: true, document_type: true, object_key: true, file_name: true, content_type: true, upload_confirmed: true, created_at: true }
+      },
+      agents: {
+        select: {
+          id: true,
+          user_id: true,
+          joined_at: true,
+          user: { select: { username: true, email: true, phone: true, role: true } }
+        }
+      },
+      _count: { select: { listings: true, agents: true, documents: true } }
+    }
+  });
   if (!agency) return res.status(404).json({ success: false, error: 'Agency not found' });
-  return res.json({ success: true, agency });
+
+  const [agentRows, listingCount] = await Promise.all([
+    Promise.all(agency.agents.map(async (agent) => ({
+      id: String(agent.id),
+      user_id: agent.user_id,
+      username: agent.user.username,
+      email: agent.user.email,
+      phone: agent.user.phone,
+      role: agent.user.role,
+      joined_at: agent.joined_at,
+      listing_count: await prisma.listing.count({ where: { agency_id: agency.id, user_id: agent.user_id, deleted_at: null } })
+    }))),
+    prisma.listing.count({ where: { agency_id: agency.id, deleted_at: null } })
+  ]);
+
+  const { _count, documents, agents, ...agencyDetails } = agency;
+  return res.json({
+    success: true,
+    agency: {
+      ...agencyDetails,
+      agent_count: _count.agents,
+      listing_count: listingCount,
+      document_count: _count.documents,
+      documents: documents.map((document) => ({
+        id: document.id,
+        type: document.document_type,
+        name: document.file_name,
+        file_url: document.object_key,
+        status: document.upload_confirmed ? 'verified' : 'pending',
+        uploaded_at: document.created_at,
+        content_type: document.content_type
+      })),
+      agents: agentRows
+    }
+  });
 };
