@@ -176,9 +176,15 @@ export const getAdminAgencies: RequestHandler = async (req, res) => {
   const where = { ...(status ? { status: status as 'DRAFT' | 'UNDER_REVIEW' | 'ACTIVE' | 'REJECTED' } : {}), ...(search ? { OR: [{ name: { contains: search, mode: 'insensitive' as const } }, { slug: { contains: search, mode: 'insensitive' as const } }] } : {}) };
   const [totalItems, agencies] = await Promise.all([
     prisma.agency.count({ where }),
-    prisma.agency.findMany({ where, skip, take: limit, orderBy: { created_at: 'desc' }, include: { creator: { select: { id: true, username: true, email: true } }, _count: { select: { agents: true, listings: true, documents: true } } } })
+    prisma.agency.findMany({ where, skip, take: limit, orderBy: { created_at: 'desc' }, include: { creator: { select: { id: true, username: true, email: true } }, _count: { select: { agents: true, documents: true } } } })
   ]);
-  return res.json({ success: true, pagination: pagination(page, limit, totalItems), totalItems, count: agencies.length, agencies });
+  const agenciesWithCounts = await Promise.all(agencies.map(async ({ _count, ...agency }) => ({
+    ...agency,
+    agent_count: _count.agents,
+    listing_count: await prisma.listing.count({ where: { agency_id: agency.id, deleted_at: null } }),
+    document_count: _count.documents
+  })));
+  return res.json({ success: true, pagination: pagination(page, limit, totalItems), totalItems, count: agenciesWithCounts.length, agencies: agenciesWithCounts });
 };
 
 export const getAdminAgency: RequestHandler = async (req, res) => {
