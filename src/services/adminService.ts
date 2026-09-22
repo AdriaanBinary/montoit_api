@@ -79,7 +79,12 @@ export const getAdminUsers: RequestHandler = async (req, res) => {
       select: { id: true, username: true, email: true, phone: true, role: true, subscription: true, subscription_expiry: true, email_verified: true, suspended_at: true, suspension_reason: true, created_at: true, updated_at: true, _count: { select: { createdListings: true, agencyMemberships: true } } }
     })
   ]);
-  return res.json({ success: true, pagination: pagination(page, limit, totalItems), totalItems, count: users.length, users });
+  const usersWithCounts = users.map(({ _count, ...user }) => ({
+    ...user,
+    created_listing_count: _count.createdListings,
+    agency_membership_count: _count.agencyMemberships
+  }));
+  return res.json({ success: true, pagination: pagination(page, limit, totalItems), totalItems, count: usersWithCounts.length, users: usersWithCounts });
 };
 
 export const getAdminUser: RequestHandler = async (req, res) => {
