@@ -1,7 +1,7 @@
 import express from 'express';
 import { z } from 'zod';
 import { checkAuth, AuthenticatedRequest } from '../utils/authMiddleware.js';
-import { createPackageCheckout, completePackagePayment, PackagePaymentError } from '../services/packagePaymentsService.js';
+import { createPackageCheckout, completePackagePayment, getPackageUpgradeQuote, PackagePaymentError } from '../services/packagePaymentsService.js';
 import { isValidFlutterwaveWebhookSecret, isValidFlutterwaveWebhookSignature } from '../services/payments/flutterwaveProvider.js';
 import { errorFields, logger, maskIdentifier } from '../utils/logger.js';
 
@@ -10,6 +10,27 @@ const router = express.Router();
 const checkoutSchema = z.object({
   package_id: z.coerce.number().int().positive(),
   method: z.enum(['CARD', 'MOBILE_MONEY']).default('MOBILE_MONEY')
+});
+
+router.post('/packages/checkout/preview', checkAuth, async (req, res) => {
+  const parsed = checkoutSchema.pick({ package_id: true }).safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ success: false, error: 'Invalid checkout preview request', message: parsed.error.issues.map((issue) => issue.message).join(', ') });
+  }
+
+  const userId = (req as AuthenticatedRequest).user?.user_id;
+  if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+  try {
+    const quote = await getPackageUpgradeQuote(userId, parsed.data.package_id);
+    return res.json({ success: true, quote });
+  } catch (error) {
+    if (error instanceof PackagePaymentError) {
+      return res.status(error.status).json({ success: false, error: error.code, message: error.message });
+    }
+    logger.error('payment.checkout.preview_failed', { request_id: req.requestId, user_id: userId, package_id: parsed.data.package_id, ...errorFields(error) });
+    return res.status(500).json({ success: false, error: 'PAYMENT_PREVIEW_FAILED', message: 'Unable to calculate payment amount' });
+  }
 });
 
 router.post('/packages/checkout', checkAuth, async (req, res) => {
