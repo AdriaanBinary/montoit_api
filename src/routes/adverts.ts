@@ -131,7 +131,7 @@ router.post('/adverts/:id/checkout', checkAuth, async (req, res) => {
   if (!user) return res.status(404).json({ success: false, error: 'User not found' });
 
   const reference = `ndabo-advert-${advertId.data}-${crypto.randomBytes(6).toString('hex')}`;
-  const redirectUrl = process.env.ADVERT_PAYMENT_REDIRECT_URL || process.env.FLW_SUCCESS_REDIRECT_URL || 'http://localhost:3000/api/adverts/checkout/complete';
+  const redirectUrl = process.env.ADVERT_PAYMENT_CALLBACK_URL || `${process.env.API_PUBLIC_URL || 'http://localhost:3000'}/api/adverts/checkout/complete`;
   try {
     const checkout = await flutterwaveProvider.createHostedCheckout({
       amount: Number(campaign.price),
@@ -162,7 +162,7 @@ router.get('/adverts/checkout/complete', async (req, res) => {
   const reference = typeof req.query.tx_ref === 'string' ? req.query.tx_ref : undefined;
   const transactionId = typeof req.query.transaction_id === 'string' ? req.query.transaction_id : undefined;
   const status = typeof req.query.status === 'string' ? req.query.status.toLowerCase() : '';
-  const redirectBase = process.env.ADVERT_FRONTEND_REDIRECT_URL || 'http://localhost:5173/advertise';
+  const redirectBase = process.env.FRONTEND_PUBLIC_URL || 'http://localhost:5173/advertise';
   if (!reference || !transactionId || ['cancelled', 'canceled', 'failed'].includes(status)) return res.redirect(`${redirectBase}?payment=failed`);
 
   const payments = await prisma.$queryRaw<Array<{ id: string; advert_id: string; amount: string; currency: string; duration_months: number }>>`
