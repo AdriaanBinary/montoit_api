@@ -14,6 +14,7 @@ import usersRoutes from './routes/users.js';
 import docsRoutes from './routes/docs.js';
 import packagesRoutes from './routes/packages.js';
 import paymentsRoutes from './routes/payments.js';
+import advertsRoutes from './routes/adverts.js';
 import adminRoutes from './routes/admin.js';
 import prisma from './db/prisma.js';
 import { ensureCameroonLocationDataInitialized } from './db/locations.js';
@@ -28,15 +29,19 @@ const PORT = Number(process.env.PORT) || 3000;
 
 function getAllowedCorsOrigins(): string[] {
   const configuredOrigins = process.env.CORS_ALLOWED_ORIGINS;
+  const defaultOrigins = ['https://ndabo-web.vercel.app'];
 
   if (!configuredOrigins || configuredOrigins.trim().length === 0) {
-    return [];
+    return defaultOrigins;
   }
 
-  return configuredOrigins
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter((origin) => origin.length > 0);
+  return [...new Set([
+    ...defaultOrigins,
+    ...configuredOrigins
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter((origin) => origin.length > 0)
+  ])];
 }
 
 const allowedOrigins = getAllowedCorsOrigins();
@@ -121,6 +126,7 @@ app.use('/api', usersRoutes);
 app.use('/api', agenciesRoutes);
 app.use('/api', packagesRoutes);
 app.use('/api', paymentsRoutes);
+app.use('/api', advertsRoutes);
 app.use('/api', adminRoutes);
 app.use('/', docsRoutes);
 
