@@ -38,6 +38,7 @@ const uploadSchema = z.object({
 const createAdvertSchema = z.object({
   object_key: z.string().trim().min(1),
   destination_url: z.union([z.string().url().max(2000), z.literal('')]).optional().transform((value) => value || null),
+  placement: z.enum(['HORIZONTAL', 'VERTICAL']).default('HORIZONTAL'),
   duration_months: z.coerce.number().int().refine((value): value is AdvertDuration => durations.includes(value as AdvertDuration), 'Duration must be 1, 3, 6, 12, or 24 months')
 });
 
@@ -109,9 +110,9 @@ router.post('/adverts', checkAuth, async (req, res) => {
 
   const price = plans[parsed.data.duration_months];
   const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
-    INSERT INTO advert_campaigns (user_id, image_object_key, destination_url, duration_months, price, currency, status)
-    VALUES (${userId}, ${parsed.data.object_key}, ${parsed.data.destination_url}, ${parsed.data.duration_months}, ${price}, 'XAF', 'PENDING_PAYMENT'::advert_campaign_status)
-    RETURNING id, image_object_key, destination_url, duration_months, price::text, currency, status, impressions, clicks, visibility_score, created_at
+    INSERT INTO advert_campaigns (user_id, image_object_key, destination_url, placement, duration_months, price, currency, status)
+    VALUES (${userId}, ${parsed.data.object_key}, ${parsed.data.destination_url}, ${parsed.data.placement}::advert_placement, ${parsed.data.duration_months}, ${price}, 'XAF', 'PENDING_PAYMENT'::advert_campaign_status)
+    RETURNING id, image_object_key, destination_url, placement, duration_months, price::text, currency, status, impressions, clicks, visibility_score, created_at
   `;
   return res.status(201).json({ success: true, campaign: toJsonSafe(rows[0]), payment_required: true });
 });
@@ -208,7 +209,7 @@ router.get('/adverts/mine', checkAuth, async (req, res) => {
   if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
   const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
-    SELECT id, image_object_key, destination_url, duration_months, price::text, currency, status,
+    SELECT id, image_object_key, destination_url, placement, duration_months, price::text, currency, status,
            starts_at, expires_at, impressions, clicks, visibility_score, created_at
     FROM advert_campaigns
     WHERE user_id = ${userId}
@@ -223,18 +224,23 @@ router.get('/adverts/active', async (_req, res) => {
     SET status = 'EXPIRED'::advert_campaign_status, updated_at = NOW()
     WHERE status = 'ACTIVE'::advert_campaign_status AND expires_at <= NOW();
   `;
-  const rows = await prisma.$queryRaw<Array<{ id: string; image_object_key: string; destination_url: string | null; visibility_score: number }>>`
-    SELECT id, image_object_key, destination_url, visibility_score
-    FROM advert_campaigns
-    WHERE status = 'ACTIVE'::advert_campaign_status
-      AND starts_at <= NOW()
-      AND expires_at > NOW()
-    ORDER BY visibility_score ASC, created_at ASC
-    LIMIT 12
+  const rows = await prisma.$queryRaw<Array<{ id: string; image_object_key: string; destination_url: string | null; placement: 'HORIZONTAL' | 'VERTICAL'; visibility_score: number }>>`
+    SELECT id, image_object_key, destination_url, placement, visibility_score
+    FROM (
+      SELECT id, image_object_key, destination_url, placement, visibility_score,
+             ROW_NUMBER() OVER (PARTITION BY placement ORDER BY visibility_score ASC, created_at ASC) AS placement_rank
+      FROM advert_campaigns
+      WHERE status = 'ACTIVE'::advert_campaign_status
+        AND starts_at <= NOW()
+        AND expires_at > NOW()
+    ) ranked_adverts
+    WHERE placement_rank <= 12
+    ORDER BY visibility_score ASC
   `;
   const adverts = await Promise.all(rows.map(async (advert) => ({
     id: advert.id,
     destination_url: advert.destination_url,
+    placement: advert.placement,
     visibility_score: advert.visibility_score,
     image_url: await getSignedUrl(s3Client, new GetObjectCommand({ Bucket: bucketName, Key: advert.image_object_key }), { expiresIn: 900 })
   })));
