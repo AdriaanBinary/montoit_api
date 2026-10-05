@@ -24,6 +24,7 @@ import { registerApiRoute } from './docs/swagger.js';
 import { errorFields, logger, requestIdMiddleware } from './utils/logger.js';
 import { startPackageExpiryReminderWorker } from './services/packageExpiryReminderService.js';
 import { ensureAdvertCampaignsSchema } from './db/adverts.js';
+import { asyncHandler } from './utils/asyncHandler.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -131,7 +132,7 @@ app.use('/api', advertsRoutes);
 app.use('/api', adminRoutes);
 app.use('/', docsRoutes);
 
-app.get('/api/db-test', async (_req: Request, res: Response) => {
+app.get('/api/db-test', asyncHandler(async (_req: Request, res: Response) => {
   try {
     const result = await prisma.$queryRaw<Array<{ now: Date }>>`SELECT NOW() AS now`;
     res.json({
@@ -147,7 +148,7 @@ app.get('/api/db-test', async (_req: Request, res: Response) => {
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
-});
+}));
 
 app.use((_req: Request, res: Response) => {
   res.status(404).json({
@@ -157,8 +158,15 @@ app.use((_req: Request, res: Response) => {
   });
 });
 
-app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  logger.error('request.failed', { request_id: _req.requestId, path: _req.path, ...errorFields(err) });
+app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
+  logger.error('request.failed', {
+    request_id: req.requestId,
+    method: req.method,
+    path: req.path,
+    ...errorFields(err)
+  });
+
+  if (res.headersSent) return _next(err);
 
   if (err instanceof Error && err.message === 'Origin is not allowed by CORS') {
     return res.status(403).json({
@@ -168,26 +176,52 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     });
   }
 
-  res.status(500).json({
+  return res.status(500).json({
     success: false,
-    error: 'Internal Server Error',
-    message: err instanceof Error ? err.message : 'Unknown error'
+    error: 'INTERNAL_SERVER_ERROR',
+    message: 'An unexpected server error occurred',
+    request_id: req.requestId
   });
 });
 
-app.listen(PORT, async () => {
-  try {
-    await Promise.all([
-      ensureCameroonLocationDataInitialized(),
-      listingsDb.ensureListingImagesTable(),
-      usersDb.ensureUserFavoritesTable(),
-      ensureAdvertCampaignsSchema(),
-      startPackageExpiryReminderWorker()
-    ]);
-    console.log('Database compatibility tables initialized');
-  } catch (error) {
-    console.error('Failed to initialize database compatibility tables:', error);
-  }
+process.on('unhandledRejection', (reason) => {
+  logger.error('process.unhandled_rejection', errorFields(reason));
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error('process.uncaught_exception', {
+    fatal: false,
+    ...errorFields(error)
+  });
+});
+
+async function initializeStartupServices(): Promise<void> {
+  const tasks: Array<[string, Promise<unknown>]> = [
+    ['cameroon_location_data', ensureCameroonLocationDataInitialized()],
+    ['listing_images_schema', listingsDb.ensureListingImagesTable()],
+    ['user_favorites_schema', usersDb.ensureUserFavoritesTable()],
+    ['advert_campaigns_schema', ensureAdvertCampaignsSchema()],
+    ['package_expiry_worker', startPackageExpiryReminderWorker()]
+  ];
+  const results = await Promise.allSettled(tasks.map(([, task]) => task));
+
+  results.forEach((result, index) => {
+    const [taskName] = tasks[index];
+    if (result.status === 'rejected') {
+      logger.error('startup.initialization_failed', {
+        component: taskName,
+        ...errorFields(result.reason)
+      });
+    } else {
+      logger.info('startup.initialization_succeeded', { component: taskName });
+    }
+  });
+}
+
+app.listen(PORT, () => {
+  void initializeStartupServices().catch((error) => {
+    logger.error('startup.initialization_unexpected_failure', errorFields(error));
+  });
 
   console.log(`🚀 Montoit API running on http://localhost:${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'DEV'}`);

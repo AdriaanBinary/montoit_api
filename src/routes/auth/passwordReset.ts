@@ -5,6 +5,7 @@ import { hashPassword } from '../../utils/passwordUtils.js';
 import { createResetToken, hasExpired, hashEmailToken, PASSWORD_RESET_EXPIRY_MS } from '../../services/auth/emailTokens.js';
 import { sendPasswordResetEmail } from '../../services/email/emailService.js';
 import { normalizeEmail } from '../../utils/emailUtils.js';
+import { asyncHandler } from '../../utils/asyncHandler.js';
 
 const router = express.Router();
 const genericResponse = { message: 'If an account exists for that email, a password reset link has been sent.' };
@@ -15,7 +16,7 @@ const resetPasswordSchema = z.object({
   password: z.string().min(6)
 });
 
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', asyncHandler(async (req, res) => {
   const parsed = forgotPasswordSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: 'A valid email is required' });
@@ -48,9 +49,9 @@ router.post('/forgot-password', async (req, res) => {
     console.error('Forgot password error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
-});
+}));
 
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', asyncHandler(async (req, res) => {
   const parsed = resetPasswordSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: 'A valid token and password of at least 6 characters are required' });
@@ -80,6 +81,6 @@ router.post('/reset-password', async (req, res) => {
     console.error('Reset password error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
-});
+}));
 
 export default router;

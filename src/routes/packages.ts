@@ -2,6 +2,7 @@ import express from 'express';
 import { z } from 'zod';
 import { registerApiRoute } from '../docs/swagger.js';
 import prisma from '../db/prisma.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
 
 const router = express.Router();
 
@@ -72,7 +73,7 @@ registerApiRoute({
   }
 });
 
-router.get('/packages', async (_req, res) => {
+router.get('/packages', asyncHandler(async (_req, res) => {
   try {
     const packages = await prisma.$queryRaw<Array<{
       id: number;
@@ -116,6 +117,6 @@ router.get('/packages', async (_req, res) => {
       warning: 'Using fallback package catalog. Run the latest database migrations.'
     });
   }
-});
+}));
 
 export default router;

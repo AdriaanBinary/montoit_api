@@ -7,6 +7,7 @@ import prisma from '../db/prisma.js';
 import { registerApiRoute } from '../docs/swagger.js';
 import { AuthenticatedRequest, checkAuth } from '../utils/authMiddleware.js';
 import { flutterwaveProvider, FlutterwaveProviderError } from '../services/payments/flutterwaveProvider.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
 
 const router = express.Router();
 const bucketName = process.env.AWS_S3_BUCKET ?? 'property-images';
@@ -89,7 +90,7 @@ router.get('/adverts/plans', (_req, res) => {
   });
 });
 
-router.post('/adverts/upload', checkAuth, async (req, res) => {
+router.post('/adverts/upload', checkAuth, asyncHandler(async (req, res) => {
   const userId = userIdFrom(req);
   const parsed = uploadSchema.safeParse(req.body);
   if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -98,9 +99,9 @@ router.post('/adverts/upload', checkAuth, async (req, res) => {
   const objectKey = `adverts/${userId}/${Date.now()}-${safeFileName(parsed.data.file_name)}`;
   const upload_url = await getSignedUrl(s3Client, new PutObjectCommand({ Bucket: bucketName, Key: objectKey, ContentType: parsed.data.content_type }), { expiresIn: 3600 });
   return res.status(201).json({ success: true, bucket: bucketName, object_key: objectKey, upload_url });
-});
+}));
 
-router.post('/adverts', checkAuth, async (req, res) => {
+router.post('/adverts', checkAuth, asyncHandler(async (req, res) => {
   const userId = userIdFrom(req);
   const parsed = createAdvertSchema.safeParse(req.body);
   if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -115,9 +116,9 @@ router.post('/adverts', checkAuth, async (req, res) => {
     RETURNING id, image_object_key, destination_url, placement, duration_months, price::text, currency, status, impressions, clicks, visibility_score, created_at
   `;
   return res.status(201).json({ success: true, campaign: toJsonSafe(rows[0]), payment_required: true });
-});
+}));
 
-router.post('/adverts/:id/checkout', checkAuth, async (req, res) => {
+router.post('/adverts/:id/checkout', checkAuth, asyncHandler(async (req, res) => {
   const userId = userIdFrom(req);
   const advertId = z.string().uuid().safeParse(req.params.id);
   if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -165,9 +166,9 @@ router.post('/adverts/:id/checkout', checkAuth, async (req, res) => {
     if (error instanceof FlutterwaveProviderError) return res.status(502).json({ success: false, error: 'PAYMENT_PROVIDER_ERROR', message: error.message });
     return res.status(500).json({ success: false, error: 'ADVERT_CHECKOUT_FAILED' });
   }
-});
+}));
 
-router.get('/adverts/checkout/complete', async (req, res) => {
+router.get('/adverts/checkout/complete', asyncHandler(async (req, res) => {
   const reference = typeof req.query.tx_ref === 'string' ? req.query.tx_ref : undefined;
   const transactionId = typeof req.query.transaction_id === 'string' ? req.query.transaction_id : undefined;
   const status = typeof req.query.status === 'string' ? req.query.status.toLowerCase() : '';
@@ -202,9 +203,9 @@ router.get('/adverts/checkout/complete', async (req, res) => {
     await prisma.$executeRaw`UPDATE advert_payments SET status = 'FAILED'::advert_payment_status, updated_at = NOW() WHERE id = ${payment.id}::uuid`;
     return res.redirect(`${redirectBase}?payment=failed`);
   }
-});
+}));
 
-router.get('/adverts/mine', checkAuth, async (req, res) => {
+router.get('/adverts/mine', checkAuth, asyncHandler(async (req, res) => {
   const userId = userIdFrom(req);
   if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
@@ -216,9 +217,9 @@ router.get('/adverts/mine', checkAuth, async (req, res) => {
     ORDER BY created_at DESC
   `;
   return res.json({ success: true, campaigns: toJsonSafe(rows) });
-});
+}));
 
-router.get('/adverts/active', async (_req, res) => {
+router.get('/adverts/active', asyncHandler(async (_req, res) => {
   await prisma.$executeRaw`
     UPDATE advert_campaigns
     SET status = 'EXPIRED'::advert_campaign_status, updated_at = NOW()
@@ -245,7 +246,7 @@ router.get('/adverts/active', async (_req, res) => {
     image_url: await getSignedUrl(s3Client, new GetObjectCommand({ Bucket: bucketName, Key: advert.image_object_key }), { expiresIn: 900 })
   })));
   return res.json({ success: true, adverts: toJsonSafe(adverts) });
-});
+}));
 
 async function recordEvent(req: express.Request, res: express.Response, eventType: 'IMPRESSION' | 'CLICK') {
   const advertId = z.string().uuid().safeParse(req.params.id);
@@ -285,7 +286,7 @@ async function recordEvent(req: express.Request, res: express.Response, eventTyp
   return res.status(204).send();
 }
 
-router.post('/adverts/:id/impression', (req, res) => recordEvent(req, res, 'IMPRESSION'));
-router.post('/adverts/:id/click', (req, res) => recordEvent(req, res, 'CLICK'));
+router.post('/adverts/:id/impression', asyncHandler((req, res) => recordEvent(req, res, 'IMPRESSION')));
+router.post('/adverts/:id/click', asyncHandler((req, res) => recordEvent(req, res, 'CLICK')));
 
 export default router;

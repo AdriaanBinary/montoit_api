@@ -14,6 +14,7 @@ import { checkAuth } from '../utils/authMiddleware.js';
 import { AuthenticatedRequest } from '../utils/authMiddleware.js';
 import { getPackageSummary } from '../utils/packageAccess.js';
 import { errorFields, logger } from '../utils/logger.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
 
 const router = express.Router();
 
@@ -35,7 +36,7 @@ router.post('/users/me/avatar/confirm', checkAuth, (req, res, next) => {
 });
 router.delete('/users/me/avatar', checkAuth, removeAvatar);
 
-router.get('/users/me/package', checkAuth, async (req, res) => {
+router.get('/users/me/package', checkAuth, asyncHandler(async (req, res) => {
   const userId = (req as AuthenticatedRequest).user?.user_id;
   if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
@@ -53,7 +54,7 @@ router.get('/users/me/package', checkAuth, async (req, res) => {
     logger.error('payment.package_summary.failed', { request_id: req.requestId, user_id: userId, ...errorFields(error) });
     return res.status(500).json({ success: false, error: 'Failed to load package summary' });
   }
-});
+}));
 
 const favoriteListingBodySchema = z.object({
   listing_id: z.coerce.number().int().positive()

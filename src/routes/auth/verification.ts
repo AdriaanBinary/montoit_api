@@ -4,6 +4,7 @@ import { z } from 'zod';
 import prisma from '../../db/prisma.js';
 import { sendVerificationEmail, sendWelcomeEmail } from '../../services/email/emailService.js';
 import { createOtp, hasExpired, hashEmailToken, OTP_EXPIRY_MS } from '../../services/auth/emailTokens.js';
+import { asyncHandler } from '../../utils/asyncHandler.js';
 
 const router = express.Router();
 
@@ -12,7 +13,7 @@ const verificationSchema = z.object({
   otp: z.string().regex(/^\d{6}$/)
 });
 
-router.post('/verify-email', async (req, res) => {
+router.post('/verify-email', asyncHandler(async (req, res) => {
   const parsed = verificationSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: 'user_id and a 6-digit otp are required' });
@@ -58,9 +59,9 @@ router.post('/verify-email', async (req, res) => {
     console.error('Email verification error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
-});
+}));
 
-router.post('/resend-verification', async (req, res) => {
+router.post('/resend-verification', asyncHandler(async (req, res) => {
   const parsed = z.object({ user_id: z.string().min(1) }).safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: 'user_id is required' });
@@ -92,6 +93,6 @@ router.post('/resend-verification', async (req, res) => {
     console.error('Resend verification error:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
-});
+}));
 
 export default router;

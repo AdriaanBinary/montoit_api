@@ -4,6 +4,7 @@ import { checkAuth, AuthenticatedRequest } from '../utils/authMiddleware.js';
 import { createPackageCheckout, completePackagePayment, getPackageUpgradeQuote, PackagePaymentError } from '../services/packagePaymentsService.js';
 import { isValidFlutterwaveWebhookSecret, isValidFlutterwaveWebhookSignature } from '../services/payments/flutterwaveProvider.js';
 import { errorFields, logger, maskIdentifier } from '../utils/logger.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
 
 const router = express.Router();
 
@@ -12,7 +13,7 @@ const checkoutSchema = z.object({
   method: z.enum(['CARD', 'MOBILE_MONEY']).default('MOBILE_MONEY')
 });
 
-router.post('/packages/checkout/preview', checkAuth, async (req, res) => {
+router.post('/packages/checkout/preview', checkAuth, asyncHandler(async (req, res) => {
   const parsed = checkoutSchema.pick({ package_id: true }).safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ success: false, error: 'Invalid checkout preview request', message: parsed.error.issues.map((issue) => issue.message).join(', ') });
@@ -31,9 +32,9 @@ router.post('/packages/checkout/preview', checkAuth, async (req, res) => {
     logger.error('payment.checkout.preview_failed', { request_id: req.requestId, user_id: userId, package_id: parsed.data.package_id, ...errorFields(error) });
     return res.status(500).json({ success: false, error: 'PAYMENT_PREVIEW_FAILED', message: 'Unable to calculate payment amount' });
   }
-});
+}));
 
-router.post('/packages/checkout', checkAuth, async (req, res) => {
+router.post('/packages/checkout', checkAuth, asyncHandler(async (req, res) => {
   const parsed = checkoutSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ success: false, error: 'Invalid checkout request', message: parsed.error.issues.map((issue) => issue.message).join(', ') });
@@ -56,9 +57,9 @@ router.post('/packages/checkout', checkAuth, async (req, res) => {
     logger.error('payment.checkout.failed', { request_id: req.requestId, user_id: userId, package_id: parsed.data.package_id, method: parsed.data.method, ...errorFields(error) });
     return res.status(500).json({ success: false, error: 'PAYMENT_FAILED', message: 'Unable to start payment' });
   }
-});
+}));
 
-router.post('/payments/flutterwave/webhook', async (req, res) => {
+router.post('/payments/flutterwave/webhook', asyncHandler(async (req, res) => {
   const rawBody = (req as express.Request & { rawBody?: Buffer }).rawBody || Buffer.from(JSON.stringify(req.body || {}));
   const signature = typeof req.headers['flutterwave-signature'] === 'string'
     ? req.headers['flutterwave-signature']
@@ -120,9 +121,9 @@ router.post('/payments/flutterwave/webhook', async (req, res) => {
     logger.error('payment.webhook.processing_failed', { request_id: req.requestId, payment_id: paymentId, transaction_id: maskIdentifier(String(transactionId)), ...errorFields(error) });
     return res.status(error instanceof PackagePaymentError ? error.status : 500).json({ success: false, error: error instanceof PackagePaymentError ? error.code : 'WEBHOOK_PROCESSING_FAILED' });
   }
-});
+}));
 
-router.get('/payments/flutterwave/complete', async (req, res) => {
+router.get('/payments/flutterwave/complete', asyncHandler(async (req, res) => {
   const status = typeof req.query.status === 'string' ? req.query.status.toLowerCase() : undefined;
   const paymentId = typeof req.query.payment_id === 'string' ? req.query.payment_id : undefined;
   const transactionId = typeof req.query.transaction_id === 'string' ? req.query.transaction_id : undefined;
@@ -167,7 +168,7 @@ router.get('/payments/flutterwave/complete', async (req, res) => {
     logger.error('payment.completion.failed', { request_id: req.requestId, payment_id: paymentId, transaction_id: maskIdentifier(transactionId), error_code: code, ...errorFields(error) });
     return res.redirect(`${redirectBase}${redirectBase.includes('?') ? '&' : '?'}payment=failed&error=${encodeURIComponent(code)}`);
   }
-});
+}));
 
 async function resolvePaymentId(reference: string): Promise<string | null> {
   const prisma = (await import('../db/prisma.js')).default;

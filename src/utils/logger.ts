@@ -58,7 +58,11 @@ export function maskIdentifier(value: string | undefined): string | undefined {
 
 export function errorFields(error: unknown): LogFields {
   if (error instanceof Error) {
-    return { error_name: error.name, error_message: error.message };
+    return {
+      error_name: error.name,
+      error_message: error.message,
+      ...(error.stack ? { error_stack: error.stack } : {})
+    };
   }
-  return { error_message: 'Unknown error' };
+  return { error_name: 'UnknownError', error_message: String(error) };
 }
