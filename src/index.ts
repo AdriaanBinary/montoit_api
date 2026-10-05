@@ -23,6 +23,7 @@ import usersDb from './db/users.js';
 import { registerApiRoute } from './docs/swagger.js';
 import { errorFields, logger, requestIdMiddleware } from './utils/logger.js';
 import { startPackageExpiryReminderWorker } from './services/packageExpiryReminderService.js';
+import { ensureAdvertCampaignsSchema } from './db/adverts.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -180,6 +181,7 @@ app.listen(PORT, async () => {
       ensureCameroonLocationDataInitialized(),
       listingsDb.ensureListingImagesTable(),
       usersDb.ensureUserFavoritesTable(),
+      ensureAdvertCampaignsSchema(),
       startPackageExpiryReminderWorker()
     ]);
     console.log('Database compatibility tables initialized');
