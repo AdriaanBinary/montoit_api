@@ -53,6 +53,14 @@ function safeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-');
 }
 
+function toJsonSafe<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_key, nestedValue) =>
+      typeof nestedValue === 'bigint' ? nestedValue.toString() : nestedValue
+    )
+  ) as T;
+}
+
 async function objectExists(objectKey: string): Promise<boolean> {
   try {
     await s3Client.send(new HeadObjectCommand({ Bucket: bucketName, Key: objectKey }));
@@ -105,7 +113,7 @@ router.post('/adverts', checkAuth, async (req, res) => {
     VALUES (${userId}, ${parsed.data.object_key}, ${parsed.data.destination_url}, ${parsed.data.duration_months}, ${price}, 'XAF', 'PENDING_PAYMENT'::advert_campaign_status)
     RETURNING id, image_object_key, destination_url, duration_months, price::text, currency, status, impressions, clicks, visibility_score, created_at
   `;
-  return res.status(201).json({ success: true, campaign: rows[0], payment_required: true });
+  return res.status(201).json({ success: true, campaign: toJsonSafe(rows[0]), payment_required: true });
 });
 
 router.post('/adverts/:id/checkout', checkAuth, async (req, res) => {
@@ -206,7 +214,7 @@ router.get('/adverts/mine', checkAuth, async (req, res) => {
     WHERE user_id = ${userId}
     ORDER BY created_at DESC
   `;
-  return res.json({ success: true, campaigns: rows });
+  return res.json({ success: true, campaigns: toJsonSafe(rows) });
 });
 
 router.get('/adverts/active', async (_req, res) => {
@@ -230,7 +238,7 @@ router.get('/adverts/active', async (_req, res) => {
     visibility_score: advert.visibility_score,
     image_url: await getSignedUrl(s3Client, new GetObjectCommand({ Bucket: bucketName, Key: advert.image_object_key }), { expiresIn: 900 })
   })));
-  return res.json({ success: true, adverts });
+  return res.json({ success: true, adverts: toJsonSafe(adverts) });
 });
 
 async function recordEvent(req: express.Request, res: express.Response, eventType: 'IMPRESSION' | 'CLICK') {
