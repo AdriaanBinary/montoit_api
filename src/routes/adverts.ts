@@ -235,8 +235,8 @@ router.get('/adverts/active', asyncHandler(async (_req, res) => {
         AND starts_at <= NOW()
         AND expires_at > NOW()
     ) ranked_adverts
-    WHERE placement_rank <= 12
-    ORDER BY visibility_score ASC
+    WHERE placement_rank = 1
+    ORDER BY placement ASC
   `;
   const adverts = await Promise.all(rows.map(async (advert) => ({
     id: advert.id,
