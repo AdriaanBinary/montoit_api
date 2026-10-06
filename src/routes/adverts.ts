@@ -218,6 +218,7 @@ router.get('/adverts/checkout/complete', asyncHandler(async (req, res) => {
             ELSE expires_at + make_interval(months => COALESCE(${payment.extension_months}, duration_months))
           END,
           duration_months = COALESCE(${payment.extension_months}, duration_months),
+          editable_until = NOW() + INTERVAL '7 days',
           updated_at = NOW()
       WHERE id = ${payment.advert_id}::uuid
     `;
@@ -233,8 +234,8 @@ router.get('/adverts/mine', checkAuth, asyncHandler(async (req, res) => {
   if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
   const rows = await prisma.$queryRaw<Array<Record<string, unknown> & { image_object_key: string }>>`
-    SELECT id, image_object_key, destination_url, placement, duration_months, price::text, currency, status,
-           starts_at, expires_at, impressions, clicks, visibility_score, created_at
+        SELECT id, image_object_key, destination_url, placement, duration_months, price::text, currency, status,
+          starts_at, expires_at, editable_until, impressions, clicks, visibility_score, created_at
     FROM advert_campaigns
     WHERE user_id = ${userId}
     ORDER BY created_at DESC
@@ -257,10 +258,18 @@ router.patch('/adverts/:id', checkAuth, asyncHandler(async (req, res) => {
     if (!(await objectExists(parsed.data.object_key))) return res.status(404).json({ success: false, error: 'Advert image has not finished uploading' });
   }
 
-  const existing = await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT id FROM advert_campaigns WHERE id = ${advertId.data}::uuid AND user_id = ${userId} LIMIT 1
+  const existing = await prisma.$queryRaw<Array<{ id: string; status: string; editable_until: Date | null; starts_at: Date | null }>>`
+    SELECT id, status, editable_until, starts_at
+    FROM advert_campaigns
+    WHERE id = ${advertId.data}::uuid AND user_id = ${userId}
+    LIMIT 1
   `;
   if (!existing[0]) return res.status(404).json({ success: false, error: 'Advert campaign not found' });
+  if (existing[0].status !== 'ACTIVE') return res.status(409).json({ success: false, error: 'Advert is not active' });
+  const editDeadline = existing[0].editable_until ?? (existing[0].starts_at ? new Date(existing[0].starts_at.getTime() + 7 * 24 * 60 * 60 * 1000) : null);
+  if (!editDeadline || editDeadline.getTime() <= Date.now()) {
+    return res.status(403).json({ success: false, error: 'EDIT_WINDOW_EXPIRED', message: 'Advert edits are only available for seven days after payment.' });
+  }
 
   if (parsed.data.object_key !== undefined) {
     await prisma.$executeRaw`

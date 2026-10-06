@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS "advert_campaigns" (
   "status" "advert_campaign_status" NOT NULL DEFAULT 'DRAFT',
   "starts_at" TIMESTAMPTZ(6),
   "expires_at" TIMESTAMPTZ(6),
+  "editable_until" TIMESTAMPTZ(6),
   "impressions" BIGINT NOT NULL DEFAULT 0,
   "clicks" BIGINT NOT NULL DEFAULT 0,
   "visibility_score" INTEGER NOT NULL DEFAULT 70,
