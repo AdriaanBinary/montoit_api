@@ -20,7 +20,7 @@ import { featureListing, getListingPromotions, unfeatureListing } from '../servi
 import { registerApiRoute } from '../docs/swagger.js';
 import { getPublicListings } from '../services/publicListingsService.js';
 import { checkAuth } from '../utils/authMiddleware.js';
-import { requireActivePackage, requirePublishedListingCapacity } from '../utils/packageAccess.js';
+import { requireListingPublicationAccess, requirePublishedListingCapacity } from '../utils/packageAccess.js';
 
 const router = express.Router();
 
@@ -726,7 +726,7 @@ router.get('/listings/private', checkAuth, (req, res, next) => {
 
   return getPrivateListings(req, res, next);
 });
-router.post('/listings', checkAuth, requireActivePackage, (req, res, next) => {
+router.post('/listings', checkAuth, (req, res, next) => {
   const parsedBody = createListingBodySchema.safeParse(req.body);
 
   if (!parsedBody.success) {
@@ -740,7 +740,7 @@ router.post('/listings', checkAuth, requireActivePackage, (req, res, next) => {
   req.body = parsedBody.data;
   return createListing(req, res, next);
 });
-router.post('/listings/:id/publish', checkAuth, requireActivePackage, requirePublishedListingCapacity, (req, res, next) => {
+router.post('/listings/:id/publish', checkAuth, requireListingPublicationAccess, requirePublishedListingCapacity, (req, res, next) => {
   const parsedParams = listingIdParamsSchema.safeParse(req.params);
 
   if (!parsedParams.success) {
@@ -760,7 +760,7 @@ router.post('/listings/:id/publish', checkAuth, requireActivePackage, requirePub
   req.body = parsedBody.data;
   return publishListing(req, res, next);
 });
-router.post('/listings/:id/unpublish', checkAuth, requireActivePackage, (req, res, next) => {
+router.post('/listings/:id/unpublish', checkAuth, (req, res, next) => {
   const parsedParams = listingIdParamsSchema.safeParse(req.params);
 
   if (!parsedParams.success) {
@@ -769,7 +769,7 @@ router.post('/listings/:id/unpublish', checkAuth, requireActivePackage, (req, re
 
   return unpublishListing(req, res, next);
 });
-router.post('/listings/:id/images', checkAuth, requireActivePackage, (req, res, next) => {
+router.post('/listings/:id/images', checkAuth, (req, res, next) => {
   const parsedParams = listingIdParamsSchema.safeParse(req.params);
 
   if (!parsedParams.success) {
@@ -839,7 +839,7 @@ router.get('/listings/:id', checkAuth, (req, res, next) => {
 
   return getListingById(req, res, next);
 });
-router.put('/listings/:id', checkAuth, requireActivePackage, (req, res, next) => {
+router.put('/listings/:id', checkAuth, (req, res, next) => {
   const parsedParams = listingIdParamsSchema.safeParse(req.params);
 
   if (!parsedParams.success) {

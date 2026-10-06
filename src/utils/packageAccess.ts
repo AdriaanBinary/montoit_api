@@ -200,6 +200,43 @@ export const requireActivePackage: RequestHandler = async (req, res, next) => {
   }
 };
 
+export const requireListingPublicationAccess: RequestHandler = async (req, res, next) => {
+  const userId = (req as AuthenticatedRequest).user?.user_id;
+  if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+  try {
+    const summary = await getPackageSummary(userId);
+    if (!summary) return res.status(404).json({ success: false, error: 'User not found' });
+
+    if (summary.account_type === 'PRIVATE') {
+      if (summary.published_listings < 1) {
+        return next();
+      }
+
+      return res.status(403).json({
+        success: false,
+        error: 'PRIVATE_LISTING_LIMIT_REACHED',
+        message: 'Private accounts can publish one listing. Apply for an agency account to publish more listings.',
+        package: summary
+      });
+    }
+
+    if (summary.subscription_status === 'ACTIVE') {
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      error: 'PACKAGE_REQUIRED',
+      message: 'An active package is required to publish this listing.',
+      package: summary
+    });
+  } catch (error) {
+    console.error('Listing publication access check failed:', error);
+    return res.status(500).json({ success: false, error: 'Failed to verify publication access' });
+  }
+};
+
 export const requirePublishedListingCapacity: RequestHandler = async (req, res, next) => {
   const userId = (req as AuthenticatedRequest).user?.user_id;
   if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
