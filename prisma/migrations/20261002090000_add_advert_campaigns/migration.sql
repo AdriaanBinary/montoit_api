@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS "advert_payments" (
   "provider_reference" VARCHAR(255) NOT NULL UNIQUE,
   "provider_transaction_id" VARCHAR(255),
   "checkout_url" TEXT,
+  "extension_months" INTEGER,
   "status" "advert_payment_status" NOT NULL DEFAULT 'PENDING',
   "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,

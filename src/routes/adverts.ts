@@ -43,6 +43,15 @@ const createAdvertSchema = z.object({
   duration_months: z.coerce.number().int().refine((value): value is AdvertDuration => durations.includes(value as AdvertDuration), 'Duration must be 1, 3, 6, 12, or 24 months')
 });
 
+const checkoutAdvertSchema = z.object({
+  duration_months: z.coerce.number().int().refine((value): value is AdvertDuration => durations.includes(value as AdvertDuration), 'Duration must be 1, 3, 6, 12, or 24 months').optional()
+}).optional();
+
+const updateAdvertSchema = z.object({
+  object_key: z.string().trim().min(1).optional(),
+  destination_url: z.union([z.string().url().max(2000), z.literal(''), z.null()]).optional()
+}).refine((value) => value.object_key !== undefined || value.destination_url !== undefined, 'Provide an image or destination link to update');
+
 const eventSchema = z.object({
   anonymous_session_id: z.string().trim().min(1).max(100).optional()
 });
@@ -121,18 +130,22 @@ router.post('/adverts', checkAuth, asyncHandler(async (req, res) => {
 router.post('/adverts/:id/checkout', checkAuth, asyncHandler(async (req, res) => {
   const userId = userIdFrom(req);
   const advertId = z.string().uuid().safeParse(req.params.id);
+  const parsedBody = checkoutAdvertSchema.safeParse(req.body ?? {});
   if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
   if (!advertId.success) return res.status(400).json({ success: false, error: 'Invalid advert id' });
+  if (!parsedBody.success) return res.status(400).json({ success: false, error: 'Invalid advert extension', message: parsedBody.error.issues.map((issue) => issue.message).join(', ') });
 
-  const campaigns = await prisma.$queryRaw<Array<{ id: string; price: string; currency: string; duration_months: number }>>`
-    SELECT id, price::text, currency, duration_months
+  const campaigns = await prisma.$queryRaw<Array<{ id: string; price: string; currency: string; duration_months: number; status: string }>>`
+    SELECT id, price::text, currency, duration_months, status
     FROM advert_campaigns
     WHERE id = ${advertId.data}::uuid AND user_id = ${userId}
-      AND status IN ('DRAFT'::advert_campaign_status, 'PENDING_PAYMENT'::advert_campaign_status)
+      AND status IN ('DRAFT'::advert_campaign_status, 'PENDING_PAYMENT'::advert_campaign_status, 'ACTIVE'::advert_campaign_status)
     LIMIT 1
   `;
   const campaign = campaigns[0];
   if (!campaign) return res.status(404).json({ success: false, error: 'Advert campaign not found' });
+  const isExtension = campaign.status === 'ACTIVE';
+  const extensionMonths = isExtension ? (parsedBody.data?.duration_months ?? campaign.duration_months) : null;
 
   const users = await prisma.$queryRaw<Array<{ email: string; username: string; phone: string | null }>>`
     SELECT email, username, phone FROM users WHERE id = ${userId} LIMIT 1
@@ -149,16 +162,18 @@ router.post('/adverts/:id/checkout', checkAuth, asyncHandler(async (req, res) =>
       reference,
       customer: { email: user.email, name: user.username, ...(user.phone ? { phoneNumber: user.phone } : {}) },
       redirectUrl,
-      description: `Ndabo advert campaign (${campaign.duration_months} months)`,
+      description: `Ndabo advert campaign (${extensionMonths ?? campaign.duration_months} months)`,
       meta: { advert_id: campaign.id, user_id: userId }
     });
     const payments = await prisma.$queryRaw<Array<{ id: string }>>`
-      INSERT INTO advert_payments (advert_id, user_id, amount, currency, provider_reference, provider_transaction_id, checkout_url)
-      VALUES (${campaign.id}::uuid, ${userId}, ${campaign.price}, ${campaign.currency}, ${reference}, ${checkout.transactionId ?? null}, ${checkout.link})
+      INSERT INTO advert_payments (advert_id, user_id, amount, currency, provider_reference, provider_transaction_id, checkout_url, extension_months)
+      VALUES (${campaign.id}::uuid, ${userId}, ${isExtension && extensionMonths ? plans[extensionMonths as AdvertDuration] : campaign.price}, ${campaign.currency}, ${reference}, ${checkout.transactionId ?? null}, ${checkout.link}, ${extensionMonths})
       RETURNING id
     `;
     await prisma.$executeRaw`
-      UPDATE advert_campaigns SET status = 'PENDING_PAYMENT'::advert_campaign_status, updated_at = NOW()
+      UPDATE advert_campaigns
+      SET status = CASE WHEN status = 'ACTIVE'::advert_campaign_status THEN status ELSE 'PENDING_PAYMENT'::advert_campaign_status END,
+          updated_at = NOW()
       WHERE id = ${campaign.id}::uuid AND user_id = ${userId}
     `;
     return res.status(201).json({ success: true, payment_id: payments[0]?.id, reference, checkout_url: checkout.link });
@@ -175,8 +190,8 @@ router.get('/adverts/checkout/complete', asyncHandler(async (req, res) => {
   const redirectBase = process.env.FRONTEND_PUBLIC_URL || 'http://localhost:5173/advertise';
   if (!reference || !transactionId || ['cancelled', 'canceled', 'failed'].includes(status)) return res.redirect(`${redirectBase}?payment=failed`);
 
-  const payments = await prisma.$queryRaw<Array<{ id: string; advert_id: string; amount: string; currency: string; duration_months: number }>>`
-    SELECT p.id, p.advert_id, p.amount::text, p.currency, c.duration_months
+  const payments = await prisma.$queryRaw<Array<{ id: string; advert_id: string; amount: string; currency: string; duration_months: number; extension_months: AdvertDuration | null }>>`
+    SELECT p.id, p.advert_id, p.amount::text, p.currency, c.duration_months, p.extension_months
     FROM advert_payments p JOIN advert_campaigns c ON c.id = p.advert_id
     WHERE p.provider_reference = ${reference} AND p.status = 'PENDING'::advert_payment_status
     LIMIT 1
@@ -195,7 +210,15 @@ router.get('/adverts/checkout/complete', asyncHandler(async (req, res) => {
     `;
     await prisma.$executeRaw`
       UPDATE advert_campaigns
-      SET status = 'ACTIVE'::advert_campaign_status, starts_at = NOW(), expires_at = NOW() + make_interval(months => duration_months), updated_at = NOW()
+      SET status = 'ACTIVE'::advert_campaign_status,
+          starts_at = COALESCE(starts_at, NOW()),
+          expires_at = CASE
+            WHEN expires_at IS NULL OR expires_at <= NOW()
+              THEN NOW() + make_interval(months => COALESCE(${payment.extension_months}, duration_months))
+            ELSE expires_at + make_interval(months => COALESCE(${payment.extension_months}, duration_months))
+          END,
+          duration_months = COALESCE(${payment.extension_months}, duration_months),
+          updated_at = NOW()
       WHERE id = ${payment.advert_id}::uuid
     `;
     return res.redirect(`${redirectBase}?payment=success&advert=${payment.advert_id}`);
@@ -209,14 +232,49 @@ router.get('/adverts/mine', checkAuth, asyncHandler(async (req, res) => {
   const userId = userIdFrom(req);
   if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-  const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+  const rows = await prisma.$queryRaw<Array<Record<string, unknown> & { image_object_key: string }>>`
     SELECT id, image_object_key, destination_url, placement, duration_months, price::text, currency, status,
            starts_at, expires_at, impressions, clicks, visibility_score, created_at
     FROM advert_campaigns
     WHERE user_id = ${userId}
     ORDER BY created_at DESC
   `;
-  return res.json({ success: true, campaigns: toJsonSafe(rows) });
+  const campaigns = await Promise.all(rows.map(async (campaign) => ({
+    ...campaign,
+    image_url: await getSignedUrl(s3Client, new GetObjectCommand({ Bucket: bucketName, Key: campaign.image_object_key }), { expiresIn: 900 })
+  })));
+  return res.json({ success: true, campaigns: toJsonSafe(campaigns) });
+}));
+
+router.patch('/adverts/:id', checkAuth, asyncHandler(async (req, res) => {
+  const userId = userIdFrom(req);
+  const advertId = z.string().uuid().safeParse(req.params.id);
+  const parsed = updateAdvertSchema.safeParse(req.body);
+  if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+  if (!advertId.success || !parsed.success) return res.status(400).json({ success: false, error: 'Invalid advert update', message: parsed.success ? undefined : parsed.error.issues.map((issue) => issue.message).join(', ') });
+  if (parsed.data.object_key) {
+    if (!parsed.data.object_key.startsWith(`adverts/${userId}/`)) return res.status(403).json({ success: false, error: 'Invalid advert image ownership' });
+    if (!(await objectExists(parsed.data.object_key))) return res.status(404).json({ success: false, error: 'Advert image has not finished uploading' });
+  }
+
+  const existing = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM advert_campaigns WHERE id = ${advertId.data}::uuid AND user_id = ${userId} LIMIT 1
+  `;
+  if (!existing[0]) return res.status(404).json({ success: false, error: 'Advert campaign not found' });
+
+  if (parsed.data.object_key !== undefined) {
+    await prisma.$executeRaw`
+      UPDATE advert_campaigns SET image_object_key = ${parsed.data.object_key}, updated_at = NOW()
+      WHERE id = ${advertId.data}::uuid AND user_id = ${userId}
+    `;
+  }
+  if (parsed.data.destination_url !== undefined) {
+    await prisma.$executeRaw`
+      UPDATE advert_campaigns SET destination_url = ${parsed.data.destination_url}, updated_at = NOW()
+      WHERE id = ${advertId.data}::uuid AND user_id = ${userId}
+    `;
+  }
+  return res.json({ success: true });
 }));
 
 router.get('/adverts/active', asyncHandler(async (_req, res) => {

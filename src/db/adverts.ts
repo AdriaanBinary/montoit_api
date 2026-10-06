@@ -15,6 +15,11 @@ export async function ensureAdvertCampaignsSchema(): Promise<void> {
   `;
 
   await prisma.$executeRaw`
+    ALTER TABLE IF EXISTS "advert_payments"
+      ADD COLUMN IF NOT EXISTS "extension_months" INTEGER;
+  `;
+
+  await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS "advert_campaigns_placement_lookup_idx"
       ON "advert_campaigns" ("placement", "status", "starts_at", "expires_at", "visibility_score", "created_at");
   `;
