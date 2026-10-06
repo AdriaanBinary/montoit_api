@@ -278,7 +278,7 @@ async function recordEvent(req: express.Request, res: express.Response, eventTyp
     await prisma.$executeRaw`
       UPDATE advert_campaigns
       SET impressions = impressions + 1,
-          visibility_score = GREATEST(50, LEAST(99, 70 + ROUND((clicks::numeric / NULLIF(impressions + 1, 0)) * 1000)::integer)),
+          visibility_score = GREATEST(50, LEAST(99, visibility_score + 1)),
           updated_at = NOW()
       WHERE id = ${advertId.data}::uuid
     `;
