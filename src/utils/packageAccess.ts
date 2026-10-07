@@ -161,7 +161,7 @@ export async function getPackageSummary(userId: string): Promise<PackageSummary 
   const active = normalizedPackage !== null || hasActiveLegacyPackage(user.subscription, user.subscription_expiry);
   const features = normalizedPackage?.features ?? {
     ...EMPTY_FEATURES,
-    active_listings: accountType === 'PRIVATE' ? 1 : 10
+    active_listings: accountType === 'PRIVATE' ? 0 : 10
   };
   const maxPublishedListings = features.active_listings ?? 0;
 
@@ -207,19 +207,6 @@ export const requireListingPublicationAccess: RequestHandler = async (req, res, 
   try {
     const summary = await getPackageSummary(userId);
     if (!summary) return res.status(404).json({ success: false, error: 'User not found' });
-
-    if (summary.account_type === 'PRIVATE') {
-      if (summary.published_listings < 1) {
-        return next();
-      }
-
-      return res.status(403).json({
-        success: false,
-        error: 'PRIVATE_LISTING_LIMIT_REACHED',
-        message: 'Private accounts can publish one listing. Apply for an agency account to publish more listings.',
-        package: summary
-      });
-    }
 
     if (summary.subscription_status === 'ACTIVE') {
       return next();
