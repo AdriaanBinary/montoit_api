@@ -19,6 +19,10 @@ function actorId(req: AdminRequest): string {
   return String(req.user?.user_id);
 }
 
+function toJsonSafe<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value, (_key, nestedValue) => typeof nestedValue === 'bigint' ? nestedValue.toString() : nestedValue)) as T;
+}
+
 async function audit(req: AdminRequest, action: string, entityType: string, entityId: string | number, metadata?: Record<string, unknown>) {
   await auditLogsDb.create({
     actor_id: actorId(req),
@@ -156,6 +160,61 @@ export const updateAdminListing: RequestHandler = async (req, res) => {
   const listing = await prisma.listing.update({ where: { id: listingId }, data: { ...data, updated_at: new Date() }, select: { id: true, title: true, verified: true, is_published: true, status: true } });
   await audit(req as AdminRequest, 'moderate_listing', 'listing', listingId, { from: existing, to: data });
   return res.json({ success: true, listing });
+};
+
+export const getAdminAdverts: RequestHandler = async (req, res) => {
+  const { page, limit, skip } = pageValues(req as AdminRequest);
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+  const statusValues = ['DRAFT', 'PENDING_PAYMENT', 'ACTIVE', 'PAUSED', 'EXPIRED', 'CANCELLED'];
+  if (status && !statusValues.includes(status)) return res.status(400).json({ success: false, error: 'Invalid advert status' });
+
+  const searchPattern = search ? `%${search}%` : null;
+  const filter = status ? `${status}::advert_campaign_status` : null;
+  const [countRows, adverts] = await Promise.all([
+    prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*)::bigint AS count
+      FROM advert_campaigns c JOIN users u ON u.id = c.user_id
+      WHERE (${filter} IS NULL OR c.status = ${filter})
+        AND (${searchPattern} IS NULL OR c.destination_url ILIKE ${searchPattern} OR u.username ILIKE ${searchPattern} OR u.email ILIKE ${searchPattern})
+    `,
+    prisma.$queryRaw<Array<Record<string, unknown>>>
+      `SELECT c.id, c.image_object_key, c.destination_url, c.placement, c.duration_months,
+        c.price::text, c.currency, c.status, c.starts_at, c.expires_at, c.impressions,
+        c.clicks, c.visibility_score, c.created_at, c.updated_at,
+        u.id AS owner_id, u.username AS owner_username, u.email AS owner_email
+      FROM advert_campaigns c JOIN users u ON u.id = c.user_id
+      WHERE (${filter} IS NULL OR c.status = ${filter})
+        AND (${searchPattern} IS NULL OR c.destination_url ILIKE ${searchPattern} OR u.username ILIKE ${searchPattern} OR u.email ILIKE ${searchPattern})
+      ORDER BY c.created_at DESC
+      LIMIT ${limit} OFFSET ${skip}
+    `
+  ]);
+  const totalItems = Number(countRows[0]?.count ?? 0);
+  return res.json({ success: true, pagination: pagination(page, limit, totalItems), totalItems, count: adverts.length, adverts: toJsonSafe(adverts) });
+};
+
+export const updateAdminAdvertStatus: RequestHandler = async (req, res) => {
+  const advertId = req.params.id;
+  const status = req.body?.status;
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : null;
+  if (!['ACTIVE', 'PAUSED'].includes(status)) return res.status(400).json({ success: false, error: 'Advert status must be ACTIVE or PAUSED' });
+  if (status === 'PAUSED' && !note) return res.status(400).json({ success: false, error: 'A reason is required when suspending an advert' });
+
+  const existing = await prisma.$queryRaw<Array<{ id: string; status: string }>>`
+    SELECT id, status FROM advert_campaigns WHERE id = ${advertId}::uuid LIMIT 1
+  `;
+  if (!existing[0]) return res.status(404).json({ success: false, error: 'Advert campaign not found' });
+  if (existing[0].status === status) return res.status(409).json({ success: false, error: `Advert is already ${status.toLowerCase()}` });
+
+  const updated = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    UPDATE advert_campaigns
+    SET status = ${status}::advert_campaign_status, updated_at = NOW()
+    WHERE id = ${advertId}::uuid
+    RETURNING id, status, updated_at
+  `;
+  await audit(req as AdminRequest, status === 'PAUSED' ? 'suspend_advert' : 'unsuspend_advert', 'advert', advertId, { from: existing[0].status, to: status, note });
+  return res.json({ success: true, advert: toJsonSafe(updated[0]) });
 };
 
 export const getAdminAuditLogs: RequestHandler = async (req, res) => {

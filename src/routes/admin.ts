@@ -6,6 +6,7 @@ import {
   getAdminAgency,
   getAdminListing,
   getAdminListings,
+  getAdminAdverts,
   getAdminOverview,
   reviewAdminAgency,
   getAdminUser,
@@ -14,6 +15,7 @@ import {
   suspendAdminUser,
   unsuspendAdminUser,
   updateAdminListing,
+  updateAdminAdvertStatus,
   updateAdminUserRole
 } from '../services/adminService.js';
 
@@ -35,6 +37,8 @@ router.post('/admin/users/:id/unsuspend', unsuspendAdminUser);
 router.get('/admin/listings', getAdminListings);
 router.get('/admin/listings/:id', getAdminListing);
 router.patch('/admin/listings/:id/moderation', express.json(), updateAdminListing);
+router.get('/admin/adverts', getAdminAdverts);
+router.patch('/admin/adverts/:id/status', express.json(), updateAdminAdvertStatus);
 router.get('/admin/audit-log', getAdminAuditLogs);
 
 export default router;
