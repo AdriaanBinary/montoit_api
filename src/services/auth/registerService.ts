@@ -15,8 +15,8 @@ export const register: RequestHandler = async (req, res) => {
   const typedReq = req as Request<{}, {}, RegisterRequestBody>;
   const { username, email, password, phone } = typedReq.body;
 
-  if (!username || !email || !password) {
-    return res.status(400).json({ error: 'username, email, and password are required' });
+  if (!username || !email || !password || !phone) {
+    return res.status(400).json({ error: 'username, email, password, and phone are required' });
   }
 
   let createdUserId: string | null = null;

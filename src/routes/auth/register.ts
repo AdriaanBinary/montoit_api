@@ -5,11 +5,16 @@ import { register } from '../../services/auth/registerService.js';
 
 const router = express.Router();
 
+const normalizeCameroonPhone = (phone: string): string => {
+	const digits = phone.replace(/\D/g, '');
+	return `+${digits.startsWith('237') ? digits : `237${digits}`}`;
+};
+
 const registerBodySchema = z.object({
 	username: z.string().min(1),
 	email: z.string().email(),
 	password: z.string().min(1),
-	phone: z.string().trim().min(1).optional()
+	phone: z.string().trim().regex(/^(?:\+237[\s-]?)?[26]\d{8}$/, 'A valid Cameroon phone number is required').transform(normalizeCameroonPhone)
 });
 
 const registerUserSchema = z.object({
