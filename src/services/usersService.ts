@@ -4,6 +4,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import listingsDb from '../db/listings.js';
 import usersDb from '../db/users.js';
 import { AuthenticatedRequest } from '../utils/authMiddleware.js';
+import { attachPublicIdentityUrls, attachPublicImageUrls } from './publicListingsService.js';
 
 const s3Client = new S3Client({
   forcePathStyle: true,
@@ -198,10 +199,11 @@ export const getFavoriteListings: RequestHandler = async (req, res) => {
       },
       { created_at: 'desc' }
     );
+    const hydratedListings = await attachPublicImageUrls(await attachPublicIdentityUrls(listings));
 
     const listingsById = new Map<number, Record<string, unknown>>();
 
-    for (const listing of listings) {
+    for (const listing of hydratedListings) {
       const listingId = Number(listing.id);
       if (Number.isInteger(listingId)) {
         listingsById.set(listingId, listing);
